@@ -1,17 +1,27 @@
 # routes.py -- REST API endpoints for the dashboard
 # All endpoints return JSON. The frontend fetches these via /api/*.
 
+from __future__ import annotations
+
 import time
-from fastapi import APIRouter
+from typing import Any
+
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import JSONResponse
 
 from ..db import Database
 
 router = APIRouter(prefix="/api")
 
-# Injected by app.py at startup
-db: Database | None = None
-
 PROTO_MAP = {1: "ICMP", 6: "TCP", 17: "UDP", 47: "GRE", 50: "ESP", 58: "ICMPv6"}
+
+
+def get_db(request: Request) -> Database:
+    """FastAPI dependency: get the Database from app.state."""
+    db = getattr(request.app.state, "db", None)
+    if db is None:
+        raise RuntimeError("Database not initialized")
+    return db
 
 
 def _fmt_bytes(b: int | float | None) -> str:
@@ -27,31 +37,78 @@ def _fmt_bytes(b: int | float | None) -> str:
     return f"{b:.0f} B"
 
 
+def _compute_health(wan: dict | None, devices: list[dict], alarms: list[dict]) -> dict[str, Any]:
+    """Weighted health score with documented factors."""
+    score = 100
+    factors: list[str] = []
+
+    # WAN status (40% weight)
+    if not wan or wan.get("status") != "ok":
+        score -= 40
+        factors.append("WAN down")
+    elif wan.get("latency_ms") and wan["latency_ms"] > 100:
+        score -= 15
+        factors.append(f"High latency ({wan['latency_ms']:.0f}ms)")
+    elif wan.get("latency_ms") and wan["latency_ms"] > 50:
+        score -= 5
+        factors.append(f"Elevated latency ({wan['latency_ms']:.0f}ms)")
+
+    # Device health (30% weight)
+    offline = [d for d in devices if d.get("state") != 1]
+    if offline:
+        penalty = min(30, 15 * len(offline))
+        score -= penalty
+        factors.append(f"{len(offline)} device(s) offline")
+
+    # Alarms (30% weight)
+    alarm_penalty = min(30, 5 * len(alarms))
+    if alarm_penalty:
+        score -= alarm_penalty
+        factors.append(f"{len(alarms)} active alarm(s)")
+
+    return {"score": max(0, score), "factors": factors}
+
+
+@router.get("/health")
+def health_check(request: Request) -> dict:
+    """Health endpoint for Docker healthcheck and monitoring."""
+    db = getattr(request.app.state, "db", None)
+    start_time = getattr(request.app.state, "start_time", 0)
+    result: dict[str, Any] = {
+        "status": "ok",
+        "uptime_s": round(time.time() - start_time, 1),
+    }
+    if db is not None:
+        try:
+            stats = db.get_db_stats()
+            result["last_write_ts"] = stats.get("last_write_ts", 0)
+            result["db_size_bytes"] = stats.get("db_size_bytes", 0)
+        except Exception:
+            result["status"] = "degraded"
+    else:
+        result["status"] = "starting"
+    return result
+
+
 @router.get("/overview")
-def overview():
+def overview(db: Database = Depends(get_db)) -> dict:
     """Dashboard overview: WAN status, device/client counts, health score."""
-    wan = db.get_latest_wan()
-    devices = db.get_latest_devices()
-    clients = db.get_latest_clients()
-    alarms = db.get_active_alarms()
+    try:
+        wan = db.get_latest_wan()
+        devices = db.get_latest_devices()
+        clients = db.get_latest_clients()
+        alarms = db.get_active_alarms()
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
     wireless_clients = [c for c in clients if not c.get("is_wired")]
     wired_clients = [c for c in clients if c.get("is_wired")]
 
-    # Simple health score (0-100)
-    score = 100
-    if not wan or wan.get("status") != "ok":
-        score -= 40
-    if wan and wan.get("latency_ms") and wan["latency_ms"] > 50:
-        score -= 10
-    for d in devices:
-        if d.get("state") != 1:
-            score -= 20
-    score -= len(alarms) * 5
-    score = max(0, min(100, score))
+    health = _compute_health(wan, devices, alarms)
 
     return {
-        "health_score": score,
+        "health_score": health["score"],
+        "health_factors": health["factors"],
         "wan": {
             "status": wan.get("status", "unknown") if wan else "no data",
             "latency_ms": round(wan["latency_ms"], 1) if wan and wan.get("latency_ms") else None,
@@ -74,52 +131,102 @@ def overview():
 
 
 @router.get("/clients")
-def get_clients():
-    """All connected clients with stats."""
-    clients = db.get_latest_clients()
-    return sorted(clients, key=lambda c: c.get("rx_bytes") or 0, reverse=True)
+def get_clients(
+    db: Database = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+) -> dict:
+    """All connected clients with stats, paginated."""
+    try:
+        clients = db.get_latest_clients()
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    clients.sort(key=lambda c: c.get("rx_bytes") or 0, reverse=True)
+    return {
+        "total": len(clients),
+        "offset": offset,
+        "limit": limit,
+        "data": clients[offset : offset + limit],
+    }
 
 
 @router.get("/clients/{mac}/history")
-def client_history(mac: str, hours: float = 24):
+def client_history(
+    mac: str,
+    db: Database = Depends(get_db),
+    hours: float = Query(24, ge=0.1, le=8760),
+) -> list[dict]:
     """Signal/satisfaction history for a specific client."""
-    return db.get_client_history(mac, hours)
+    try:
+        return db.get_client_history(mac, hours)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @router.get("/devices")
-def get_devices():
+def get_devices(db: Database = Depends(get_db)) -> list[dict]:
     """All adopted devices with stats."""
-    return db.get_latest_devices()
+    try:
+        return db.get_latest_devices()
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @router.get("/wan/history")
-def wan_history(hours: float = 24):
+def wan_history(
+    db: Database = Depends(get_db),
+    hours: float = Query(24, ge=0.1, le=8760),
+) -> list[dict]:
     """WAN latency and status history."""
-    return db.get_wan_history(hours)
+    try:
+        return db.get_wan_history(hours)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @router.get("/traffic/top-talkers")
-def top_talkers(hours: float = 1, limit: int = 20):
+def top_talkers(
+    db: Database = Depends(get_db),
+    hours: float = Query(1, ge=0.1, le=8760),
+    limit: int = Query(20, ge=1, le=1000),
+) -> list[dict]:
     """Top source IPs by bytes (NetFlow data)."""
-    rows = db.get_top_talkers(hours, limit)
+    try:
+        rows = db.get_top_talkers(hours, limit)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
         r["total_bytes_fmt"] = _fmt_bytes(r.get("total_bytes"))
     return rows
 
 
 @router.get("/traffic/top-destinations")
-def top_destinations(hours: float = 1, limit: int = 20):
+def top_destinations(
+    db: Database = Depends(get_db),
+    hours: float = Query(1, ge=0.1, le=8760),
+    limit: int = Query(20, ge=1, le=1000),
+) -> list[dict]:
     """Top destination IPs by bytes (NetFlow data)."""
-    rows = db.get_top_destinations(hours, limit)
+    try:
+        rows = db.get_top_destinations(hours, limit)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
         r["total_bytes_fmt"] = _fmt_bytes(r.get("total_bytes"))
     return rows
 
 
 @router.get("/traffic/top-ports")
-def top_ports(hours: float = 1, limit: int = 20):
+def top_ports(
+    db: Database = Depends(get_db),
+    hours: float = Query(1, ge=0.1, le=8760),
+    limit: int = Query(20, ge=1, le=1000),
+) -> list[dict]:
     """Top destination ports by bytes."""
-    rows = db.get_top_ports(hours, limit)
+    try:
+        rows = db.get_top_ports(hours, limit)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
         r["total_bytes_fmt"] = _fmt_bytes(r.get("total_bytes"))
         r["protocol_name"] = PROTO_MAP.get(r.get("protocol"), str(r.get("protocol", "")))
@@ -127,15 +234,25 @@ def top_ports(hours: float = 1, limit: int = 20):
 
 
 @router.get("/traffic/bandwidth")
-def bandwidth_timeseries(hours: float = 24, bucket_minutes: int = 5):
+def bandwidth_timeseries(
+    db: Database = Depends(get_db),
+    hours: float = Query(24, ge=0.1, le=8760),
+    bucket_minutes: int = Query(5, ge=1, le=1440),
+) -> list[dict]:
     """Bandwidth over time in configurable buckets."""
-    rows = db.get_bandwidth_timeseries(hours, bucket_minutes)
+    try:
+        rows = db.get_bandwidth_timeseries(hours, bucket_minutes)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
         r["mbps"] = round((r.get("total_bytes", 0) * 8) / (bucket_minutes * 60 * 1_000_000), 2)
     return rows
 
 
 @router.get("/alarms")
-def get_alarms():
+def get_alarms(db: Database = Depends(get_db)) -> list[dict]:
     """Active (non-archived) alarms."""
-    return db.get_active_alarms()
+    try:
+        return db.get_active_alarms()
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})

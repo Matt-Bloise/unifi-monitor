@@ -1,0 +1,11 @@
+.git
+.env
+data/
+tests/
+*.md
+LICENSE
+Makefile
+.github/
+.pytest_cache/
+__pycache__/
+*.egg-info/

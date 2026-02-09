@@ -2,8 +2,10 @@
 # WAL mode for concurrent reads from web API while poller writes.
 # Retention policy enforced by periodic cleanup.
 
-import json
+from __future__ import annotations
+
 import logging
+import os
 import sqlite3
 import threading
 import time
@@ -11,18 +13,21 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-DB_PATH = Path(os.getenv("DB_PATH", "data/monitor.db")) if (os := __import__("os")) else Path("data/monitor.db")
+DB_PATH = Path(os.getenv("DB_PATH", "data/monitor.db"))
+
+_VALID_TABLES = frozenset({"wan_metrics", "devices", "clients", "netflow", "alarms"})
 
 
-def _dict_factory(cursor, row):
+def _dict_factory(cursor: sqlite3.Cursor, row: tuple) -> dict:
     return {col[0]: row[i] for i, col in enumerate(cursor.description)}
 
 
 class Database:
-    def __init__(self, path: str | Path | None = None):
+    def __init__(self, path: str | Path | None = None) -> None:
         self.path = Path(path) if path else DB_PATH
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
+        self._last_write_ts: float = 0.0
         self._init_schema()
 
     @property
@@ -35,7 +40,7 @@ class Database:
             self._local.conn = conn
         return self._local.conn
 
-    def _init_schema(self):
+    def _init_schema(self) -> None:
         conn = self._conn
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS wan_metrics (
@@ -65,6 +70,7 @@ class Database:
                 rx_bytes_r REAL
             );
             CREATE INDEX IF NOT EXISTS idx_dev_ts ON devices(ts);
+            CREATE INDEX IF NOT EXISTS idx_dev_mac_ts ON devices(mac, ts);
 
             CREATE TABLE IF NOT EXISTS clients (
                 ts REAL NOT NULL,
@@ -83,6 +89,7 @@ class Database:
                 rx_rate REAL
             );
             CREATE INDEX IF NOT EXISTS idx_cli_ts ON clients(ts);
+            CREATE INDEX IF NOT EXISTS idx_cli_mac_ts ON clients(mac, ts);
 
             CREATE TABLE IF NOT EXISTS netflow (
                 ts REAL NOT NULL,
@@ -110,56 +117,103 @@ class Database:
 
     # -- Write methods --
 
-    def insert_wan(self, ts: float, status: str, latency_ms: float | None,
-                   wan_ip: str | None, cpu_pct: float | None, mem_pct: float | None,
-                   download_bps: float | None = None, upload_bps: float | None = None):
-        self._conn.execute(
-            "INSERT INTO wan_metrics VALUES (?,?,?,?,?,?,?,?)",
-            (ts, status, latency_ms, download_bps, upload_bps, wan_ip, cpu_pct, mem_pct),
-        )
-        self._conn.commit()
+    def insert_wan(
+        self,
+        ts: float,
+        status: str,
+        latency_ms: float | None,
+        wan_ip: str | None,
+        cpu_pct: float | None,
+        mem_pct: float | None,
+        download_bps: float | None = None,
+        upload_bps: float | None = None,
+    ) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT INTO wan_metrics VALUES (?,?,?,?,?,?,?,?)",
+                (ts, status, latency_ms, download_bps, upload_bps, wan_ip, cpu_pct, mem_pct),
+            )
+        self._last_write_ts = ts
 
-    def insert_devices(self, ts: float, devices: list[dict]):
+    def insert_devices(self, ts: float, devices: list[dict]) -> None:
         rows = [
-            (ts, d["mac"], d.get("name"), d.get("model"), d.get("ip"),
-             d.get("state"), d.get("cpu_pct"), d.get("mem_pct"),
-             d.get("num_clients"), d.get("satisfaction"),
-             d.get("tx_bytes_r"), d.get("rx_bytes_r"))
+            (
+                ts,
+                d["mac"],
+                d.get("name"),
+                d.get("model"),
+                d.get("ip"),
+                d.get("state"),
+                d.get("cpu_pct"),
+                d.get("mem_pct"),
+                d.get("num_clients"),
+                d.get("satisfaction"),
+                d.get("tx_bytes_r"),
+                d.get("rx_bytes_r"),
+            )
             for d in devices
         ]
-        self._conn.executemany("INSERT INTO devices VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
-        self._conn.commit()
+        with self._conn:
+            self._conn.executemany("INSERT INTO devices VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+        self._last_write_ts = ts
 
-    def insert_clients(self, ts: float, clients: list[dict]):
+    def insert_clients(self, ts: float, clients: list[dict]) -> None:
         rows = [
-            (ts, c["mac"], c.get("hostname"), c.get("ip"),
-             int(c.get("is_wired", False)), c.get("ssid"),
-             c.get("signal_dbm"), c.get("satisfaction"),
-             c.get("channel"), c.get("radio"),
-             c.get("tx_bytes"), c.get("rx_bytes"),
-             c.get("tx_rate"), c.get("rx_rate"))
+            (
+                ts,
+                c["mac"],
+                c.get("hostname"),
+                c.get("ip"),
+                int(c.get("is_wired", False)),
+                c.get("ssid"),
+                c.get("signal_dbm"),
+                c.get("satisfaction"),
+                c.get("channel"),
+                c.get("radio"),
+                c.get("tx_bytes"),
+                c.get("rx_bytes"),
+                c.get("tx_rate"),
+                c.get("rx_rate"),
+            )
             for c in clients
         ]
-        self._conn.executemany("INSERT INTO clients VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
-        self._conn.commit()
+        with self._conn:
+            self._conn.executemany("INSERT INTO clients VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+        self._last_write_ts = ts
 
-    def insert_netflow_batch(self, ts: float, flows: list[dict]):
+    def insert_netflow_batch(self, ts: float, flows: list[dict]) -> None:
         rows = [
-            (ts, f["src_ip"], f["dst_ip"], f["src_port"], f["dst_port"],
-             f["protocol"], f["bytes"], f["packets"])
+            (
+                ts,
+                f["src_ip"],
+                f["dst_ip"],
+                f["src_port"],
+                f["dst_port"],
+                f["protocol"],
+                f["bytes"],
+                f["packets"],
+            )
             for f in flows
         ]
-        self._conn.executemany("INSERT INTO netflow VALUES (?,?,?,?,?,?,?,?)", rows)
-        self._conn.commit()
+        with self._conn:
+            self._conn.executemany("INSERT INTO netflow VALUES (?,?,?,?,?,?,?,?)", rows)
+        self._last_write_ts = ts
 
-    def insert_alarms(self, ts: float, alarms: list[dict]):
+    def insert_alarms(self, ts: float, alarms: list[dict]) -> None:
         rows = [
-            (ts, a.get("id"), a.get("type"), a.get("message"),
-             a.get("device_name"), int(a.get("archived", False)))
+            (
+                ts,
+                a.get("id"),
+                a.get("type"),
+                a.get("message"),
+                a.get("device_name"),
+                int(a.get("archived", False)),
+            )
             for a in alarms
         ]
-        self._conn.executemany("INSERT INTO alarms VALUES (?,?,?,?,?,?)", rows)
-        self._conn.commit()
+        with self._conn:
+            self._conn.executemany("INSERT INTO alarms VALUES (?,?,?,?,?,?)", rows)
+        self._last_write_ts = ts
 
     # -- Read methods --
 
@@ -170,15 +224,11 @@ class Database:
         ).fetchall()
 
     def get_latest_wan(self) -> dict | None:
-        row = self._conn.execute(
-            "SELECT * FROM wan_metrics ORDER BY ts DESC LIMIT 1"
-        ).fetchone()
+        row = self._conn.execute("SELECT * FROM wan_metrics ORDER BY ts DESC LIMIT 1").fetchone()
         return row
 
     def get_latest_devices(self) -> list[dict]:
-        latest_ts = self._conn.execute(
-            "SELECT MAX(ts) as ts FROM devices"
-        ).fetchone()
+        latest_ts = self._conn.execute("SELECT MAX(ts) as ts FROM devices").fetchone()
         if not latest_ts or not latest_ts["ts"]:
             return []
         return self._conn.execute(
@@ -186,9 +236,7 @@ class Database:
         ).fetchall()
 
     def get_latest_clients(self) -> list[dict]:
-        latest_ts = self._conn.execute(
-            "SELECT MAX(ts) as ts FROM clients"
-        ).fetchone()
+        latest_ts = self._conn.execute("SELECT MAX(ts) as ts FROM clients").fetchone()
         if not latest_ts or not latest_ts["ts"]:
             return []
         return self._conn.execute(
@@ -235,28 +283,38 @@ class Database:
         cutoff = time.time() - (hours * 3600)
         bucket_secs = bucket_minutes * 60
         return self._conn.execute(
-            f"""SELECT CAST(ts / {bucket_secs} AS INTEGER) * {bucket_secs} as bucket,
-                       SUM(bytes) as total_bytes, SUM(packets) as total_packets
-                FROM netflow WHERE ts > ?
-                GROUP BY bucket ORDER BY bucket""",
-            (cutoff,),
+            "SELECT CAST(ts / ? AS INTEGER) * ? as bucket,"
+            "       SUM(bytes) as total_bytes, SUM(packets) as total_packets"
+            " FROM netflow WHERE ts > ?"
+            " GROUP BY bucket ORDER BY bucket",
+            (bucket_secs, bucket_secs, cutoff),
         ).fetchall()
 
     def get_active_alarms(self) -> list[dict]:
-        latest_ts = self._conn.execute(
-            "SELECT MAX(ts) as ts FROM alarms"
-        ).fetchone()
+        latest_ts = self._conn.execute("SELECT MAX(ts) as ts FROM alarms").fetchone()
         if not latest_ts or not latest_ts["ts"]:
             return []
         return self._conn.execute(
             "SELECT * FROM alarms WHERE ts = ? AND archived = 0", (latest_ts["ts"],)
         ).fetchall()
 
+    def get_db_stats(self) -> dict:
+        """Return row counts per table, DB file size, and last write timestamp."""
+        stats: dict = {"last_write_ts": self._last_write_ts}
+        for table in _VALID_TABLES:
+            row = self._conn.execute(f"SELECT COUNT(*) as cnt FROM {table}").fetchone()
+            stats[f"{table}_rows"] = row["cnt"] if row else 0
+        try:
+            stats["db_size_bytes"] = self.path.stat().st_size
+        except OSError:
+            stats["db_size_bytes"] = 0
+        return stats
+
     # -- Maintenance --
 
-    def cleanup(self, retention_hours: int = 168):
+    def cleanup(self, retention_hours: int = 168) -> None:
         cutoff = time.time() - (retention_hours * 3600)
-        for table in ("wan_metrics", "devices", "clients", "netflow", "alarms"):
+        for table in _VALID_TABLES:
             self._conn.execute(f"DELETE FROM {table} WHERE ts < ?", (cutoff,))
         self._conn.commit()
         self._conn.execute("PRAGMA optimize")

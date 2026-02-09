@@ -1,9 +1,15 @@
 // dashboard.js -- Fetches API data and renders the dashboard
-// Auto-refreshes every 15 seconds.
+// Auto-refreshes every 15 seconds. Pauses when tab is hidden.
 
 const REFRESH_MS = 15000;
+const STALE_THRESHOLD_MS = 60000;
 let bandwidthChart = null;
 let latencyChart = null;
+let lastSuccessfulFetch = 0;
+let refreshTimer = null;
+let currentClients = [];
+let sortColumn = 'rx_bytes';
+let sortDirection = 'desc';
 
 // -- Helpers --
 
@@ -45,11 +51,60 @@ function timeAgo(ts) {
     return Math.floor(diff / 86400) + 'd ago';
 }
 
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function deviceStateBadge(state) {
+    if (state === 1) return '<span class="badge badge-online">Online</span>';
+    if (state === 5) return '<span class="badge badge-adopting">Adopting</span>';
+    return '<span class="badge badge-offline">Offline</span>';
+}
+
+// -- Toast notifications --
+
+function showToast(msg, durationMs) {
+    durationMs = durationMs || 4000;
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.remove('hidden');
+    setTimeout(function() { toast.classList.add('hidden'); }, durationMs);
+}
+
+// -- Status banner --
+
+function updateStatusBanner() {
+    const banner = document.getElementById('status-banner');
+    const elapsed = Date.now() - lastSuccessfulFetch;
+
+    if (lastSuccessfulFetch === 0) {
+        banner.classList.add('hidden');
+        return;
+    }
+
+    if (elapsed > STALE_THRESHOLD_MS * 3) {
+        banner.className = 'status-banner error';
+        banner.textContent = 'Connection lost -- data may be outdated';
+    } else if (elapsed > STALE_THRESHOLD_MS) {
+        banner.className = 'status-banner warn';
+        banner.textContent = 'Data may be stale -- last updated ' + Math.round(elapsed / 1000) + 's ago';
+    } else {
+        banner.classList.add('hidden');
+    }
+}
+
 // -- API calls --
 
 async function fetchJSON(url) {
     try {
         const resp = await fetch(url);
+        if (!resp.ok) {
+            showToast('API error: ' + resp.status + ' on ' + url);
+            return null;
+        }
         return await resp.json();
     } catch (e) {
         console.error('Fetch error:', url, e);
@@ -65,92 +120,156 @@ function renderOverview(data) {
     const el = document.getElementById('overview-cards');
     const wan = data.wan || {};
     const hc = healthClass(data.health_score);
+    const factors = data.health_factors || [];
+    const factorText = factors.length > 0 ? factors.join(', ') : 'All systems normal';
 
-    el.innerHTML = `
-        <div class="card ${hc}">
-            <div class="label">Health Score</div>
-            <div class="value">${data.health_score}</div>
-            <div class="detail">${data.alarms || 0} active alarm${data.alarms !== 1 ? 's' : ''}</div>
-        </div>
-        <div class="card">
-            <div class="label">WAN Status</div>
-            <div class="value">
-                <span class="status-dot ${wan.status === 'ok' ? 'ok' : 'down'}"></span>
-                ${wan.status || 'N/A'}
-            </div>
-            <div class="detail">${wan.wan_ip || ''} ${wan.latency_ms ? '/ ' + wan.latency_ms + ' ms' : ''}</div>
-        </div>
-        <div class="card">
-            <div class="label">Gateway</div>
-            <div class="value">${wan.cpu_pct != null ? wan.cpu_pct + '%' : 'N/A'}</div>
-            <div class="detail">CPU${wan.mem_pct != null ? ' / Memory ' + wan.mem_pct + '%' : ''}</div>
-        </div>
-        <div class="card">
-            <div class="label">Clients</div>
-            <div class="value">${data.clients?.total || 0}</div>
-            <div class="detail">${data.clients?.wireless || 0} wireless, ${data.clients?.wired || 0} wired</div>
-        </div>
-        <div class="card">
-            <div class="label">Devices</div>
-            <div class="value">${data.devices?.online || 0}/${data.devices?.total || 0}</div>
-            <div class="detail">online</div>
-        </div>
-    `;
+    el.innerHTML =
+        '<div class="card ' + hc + '">' +
+            '<div class="label">Health Score</div>' +
+            '<div class="value">' + data.health_score + '</div>' +
+            '<div class="detail">' + escapeHtml(factorText) + '</div>' +
+        '</div>' +
+        '<div class="card">' +
+            '<div class="label">WAN Status</div>' +
+            '<div class="value">' +
+                '<span class="status-dot ' + (wan.status === 'ok' ? 'ok' : 'down') + '"></span>' +
+                escapeHtml(wan.status || 'N/A') +
+            '</div>' +
+            '<div class="detail">' + escapeHtml(wan.wan_ip || '') + (wan.latency_ms ? ' / ' + wan.latency_ms + ' ms' : '') + '</div>' +
+        '</div>' +
+        '<div class="card">' +
+            '<div class="label">Gateway</div>' +
+            '<div class="value">' + (wan.cpu_pct != null ? wan.cpu_pct + '%' : 'N/A') + '</div>' +
+            '<div class="detail">CPU' + (wan.mem_pct != null ? ' / Memory ' + wan.mem_pct + '%' : '') + '</div>' +
+        '</div>' +
+        '<div class="card">' +
+            '<div class="label">Clients</div>' +
+            '<div class="value">' + ((data.clients && data.clients.total) || 0) + '</div>' +
+            '<div class="detail">' + ((data.clients && data.clients.wireless) || 0) + ' wireless, ' + ((data.clients && data.clients.wired) || 0) + ' wired</div>' +
+        '</div>' +
+        '<div class="card">' +
+            '<div class="label">Devices</div>' +
+            '<div class="value">' + ((data.devices && data.devices.online) || 0) + '/' + ((data.devices && data.devices.total) || 0) + '</div>' +
+            '<div class="detail">online</div>' +
+        '</div>';
 
     document.getElementById('last-updated').textContent = 'Updated ' + timeAgo(data.timestamp);
 }
 
-function renderClients(clients) {
-    if (!clients) return;
-    const tbody = document.getElementById('clients-body');
+function renderDevices(devices) {
+    if (!devices || !devices.length) return;
+    var container = document.getElementById('device-cards');
+    container.innerHTML = devices.map(function(d) {
+        return '<div class="device-card">' +
+            '<div class="device-name">' + escapeHtml(d.name || d.mac) + '</div>' +
+            '<div class="device-model">' + escapeHtml(d.model || 'Unknown') + ' ' + deviceStateBadge(d.state) + '</div>' +
+            '<div class="device-stats">' +
+                (d.cpu_pct != null ? 'CPU ' + d.cpu_pct + '%' : '') +
+                (d.mem_pct != null ? ' / Mem ' + d.mem_pct + '%' : '') +
+                (d.num_clients != null ? ' / ' + d.num_clients + ' clients' : '') +
+            '</div>' +
+        '</div>';
+    }).join('');
+}
 
-    tbody.innerHTML = clients.map(c => `
-        <tr>
-            <td>${c.hostname || c.mac}</td>
-            <td>${c.ip || '-'}</td>
-            <td>${c.ssid || (c.is_wired ? 'Wired' : '-')}</td>
-            <td class="${signalClass(c.signal_dbm)}">${c.signal_dbm != null ? c.signal_dbm + ' dBm' : '-'}</td>
-            <td>${c.satisfaction != null ? c.satisfaction + '%' : '-'}</td>
-            <td>${c.channel || '-'}</td>
-            <td>${fmtBytes(c.rx_bytes)}</td>
-            <td>${fmtBytes(c.tx_bytes)}</td>
-        </tr>
-    `).join('');
+function renderAlarms(alarms) {
+    var panel = document.getElementById('alarms-panel');
+    if (!alarms || alarms.length === 0) {
+        panel.style.display = 'none';
+        return;
+    }
+    panel.style.display = '';
+    var tbody = document.getElementById('alarms-body');
+    tbody.innerHTML = alarms.map(function(a) {
+        return '<tr class="alarm-row">' +
+            '<td>' + escapeHtml(a.type) + '</td>' +
+            '<td>' + escapeHtml(a.message) + '</td>' +
+            '<td>' + escapeHtml(a.device_name || '-') + '</td>' +
+        '</tr>';
+    }).join('');
+}
+
+function renderClients(clientsResponse) {
+    if (!clientsResponse) return;
+    // Handle both paginated {data:[]} and raw array formats
+    var clients = Array.isArray(clientsResponse) ? clientsResponse : (clientsResponse.data || []);
+    currentClients = clients;
+    renderClientTable(clients);
+}
+
+function renderClientTable(clients) {
+    var tbody = document.getElementById('clients-body');
+
+    // Sort
+    var sorted = clients.slice().sort(function(a, b) {
+        var aVal = a[sortColumn];
+        var bVal = b[sortColumn];
+        if (aVal == null) aVal = sortDirection === 'desc' ? -Infinity : Infinity;
+        if (bVal == null) bVal = sortDirection === 'desc' ? -Infinity : Infinity;
+        if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+        if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    tbody.innerHTML = sorted.map(function(c) {
+        return '<tr>' +
+            '<td>' + escapeHtml(c.hostname || c.mac) + '</td>' +
+            '<td>' + escapeHtml(c.ip || '-') + '</td>' +
+            '<td>' + escapeHtml(c.ssid || (c.is_wired ? 'Wired' : '-')) + '</td>' +
+            '<td class="' + signalClass(c.signal_dbm) + '">' + (c.signal_dbm != null ? c.signal_dbm + ' dBm' : '-') + '</td>' +
+            '<td>' + (c.satisfaction != null ? c.satisfaction + '%' : '-') + '</td>' +
+            '<td>' + (c.channel || '-') + '</td>' +
+            '<td>' + fmtBytes(c.rx_bytes) + '</td>' +
+            '<td>' + fmtBytes(c.tx_bytes) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    // Update sort indicators
+    document.querySelectorAll('th.sortable').forEach(function(th) {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === sortColumn) {
+            th.classList.add(sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+    });
 }
 
 function renderTopTalkers(talkers) {
     if (!talkers) return;
-    const tbody = document.getElementById('talkers-body');
+    var tbody = document.getElementById('talkers-body');
 
-    tbody.innerHTML = talkers.slice(0, 10).map(t => `
-        <tr>
-            <td>${t.src_ip}</td>
-            <td>${t.total_bytes_fmt || fmtBytes(t.total_bytes)}</td>
-            <td>${t.flow_count || 0}</td>
-        </tr>
-    `).join('');
+    tbody.innerHTML = talkers.slice(0, 10).map(function(t) {
+        return '<tr>' +
+            '<td>' + escapeHtml(t.src_ip) + '</td>' +
+            '<td>' + (t.total_bytes_fmt || fmtBytes(t.total_bytes)) + '</td>' +
+            '<td>' + (t.flow_count || 0) + '</td>' +
+        '</tr>';
+    }).join('');
 }
 
 function renderTopPorts(ports) {
     if (!ports) return;
-    const tbody = document.getElementById('ports-body');
+    var tbody = document.getElementById('ports-body');
 
-    tbody.innerHTML = ports.slice(0, 10).map(p => `
-        <tr>
-            <td>${p.dst_port}</td>
-            <td>${p.protocol_name || p.protocol}</td>
-            <td>${p.total_bytes_fmt || fmtBytes(p.total_bytes)}</td>
-            <td>${p.flow_count || 0}</td>
-        </tr>
-    `).join('');
+    tbody.innerHTML = ports.slice(0, 10).map(function(p) {
+        return '<tr>' +
+            '<td>' + p.dst_port + '</td>' +
+            '<td>' + escapeHtml(p.protocol_name || String(p.protocol)) + '</td>' +
+            '<td>' + (p.total_bytes_fmt || fmtBytes(p.total_bytes)) + '</td>' +
+            '<td>' + (p.flow_count || 0) + '</td>' +
+        '</tr>';
+    }).join('');
 }
 
 function renderBandwidthChart(data) {
     if (!data || !data.length) return;
 
-    const ctx = document.getElementById('bandwidth-chart');
-    const labels = data.map(d => new Date(d.bucket * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
-    const mbps = data.map(d => d.mbps || 0);
+    var ctx = document.getElementById('bandwidth-chart');
+    var labels = data.map(function(d) {
+        return new Date(d.bucket * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    });
+    var mbps = data.map(function(d) { return d.mbps || 0; });
 
     if (bandwidthChart) {
         bandwidthChart.data.labels = labels;
@@ -160,7 +279,7 @@ function renderBandwidthChart(data) {
         bandwidthChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels,
+                labels: labels,
                 datasets: [{
                     label: 'Bandwidth (Mbps)',
                     data: mbps,
@@ -187,9 +306,11 @@ function renderBandwidthChart(data) {
 function renderLatencyChart(data) {
     if (!data || !data.length) return;
 
-    const ctx = document.getElementById('latency-chart');
-    const labels = data.map(d => new Date(d.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}));
-    const latency = data.map(d => d.latency_ms || 0);
+    var ctx = document.getElementById('latency-chart');
+    var labels = data.map(function(d) {
+        return new Date(d.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    });
+    var latency = data.map(function(d) { return d.latency_ms || 0; });
 
     if (latencyChart) {
         latencyChart.data.labels = labels;
@@ -199,7 +320,7 @@ function renderLatencyChart(data) {
         latencyChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels,
+                labels: labels,
                 datasets: [{
                     label: 'Latency (ms)',
                     data: latency,
@@ -223,26 +344,84 @@ function renderLatencyChart(data) {
     }
 }
 
+// -- Column sorting --
+
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('sortable')) {
+        var col = e.target.dataset.sort;
+        if (sortColumn === col) {
+            sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortColumn = col;
+            sortDirection = col === 'hostname' ? 'asc' : 'desc';
+        }
+        if (currentClients.length > 0) {
+            renderClientTable(currentClients);
+        }
+    }
+});
+
 // -- Main loop --
 
 async function refresh() {
-    const [overview, clients, talkers, ports, bandwidth, wanHistory] = await Promise.all([
+    var results = await Promise.all([
         fetchJSON('/api/overview'),
-        fetchJSON('/api/clients'),
+        fetchJSON('/api/clients?limit=200'),
         fetchJSON('/api/traffic/top-talkers?hours=1&limit=10'),
         fetchJSON('/api/traffic/top-ports?hours=1&limit=10'),
         fetchJSON('/api/traffic/bandwidth?hours=24&bucket_minutes=5'),
         fetchJSON('/api/wan/history?hours=24'),
+        fetchJSON('/api/devices'),
+        fetchJSON('/api/alarms'),
     ]);
 
-    renderOverview(overview);
-    renderClients(clients);
-    renderTopTalkers(talkers);
-    renderTopPorts(ports);
-    renderBandwidthChart(bandwidth);
-    renderLatencyChart(wanHistory);
+    var anySuccess = results.some(function(r) { return r !== null; });
+    if (anySuccess) {
+        lastSuccessfulFetch = Date.now();
+    }
+
+    renderOverview(results[0]);
+    renderClients(results[1]);
+    renderTopTalkers(results[2]);
+    renderTopPorts(results[3]);
+    renderBandwidthChart(results[4]);
+    renderLatencyChart(results[5]);
+    renderDevices(results[6]);
+    renderAlarms(results[7]);
+
+    updateStatusBanner();
 }
 
-// Initial load + auto-refresh
-refresh();
-setInterval(refresh, REFRESH_MS);
+// -- Visibility-based auto-pause --
+
+function startRefresh() {
+    if (refreshTimer) return;
+    refresh();
+    refreshTimer = setInterval(refresh, REFRESH_MS);
+}
+
+function stopRefresh() {
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+    }
+}
+
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+        stopRefresh();
+    } else {
+        startRefresh();
+    }
+});
+
+// Manual refresh button
+document.getElementById('refresh-btn').addEventListener('click', function() {
+    refresh();
+});
+
+// Periodic stale check (even when paused, update the banner)
+setInterval(updateStatusBanner, 10000);
+
+// Initial load
+startRefresh();

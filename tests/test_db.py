@@ -1,16 +1,19 @@
 # test_db.py -- Tests for SQLite database layer
 
+from __future__ import annotations
+
 import time
-import tempfile
 from pathlib import Path
 
 from unifi_monitor.db import Database
 
 
 class TestDatabase:
-    def setup_method(self):
-        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-        self.db = Database(self.tmp.name)
+    def setup_method(self, method):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self.db = Database(Path(self._tmpdir) / "test.db")
 
     def test_insert_and_get_wan(self):
         ts = time.time()
@@ -24,9 +27,19 @@ class TestDatabase:
     def test_insert_and_get_devices(self):
         ts = time.time()
         devices = [
-            {"mac": "aa:bb:cc:dd:ee:ff", "name": "Gateway", "model": "UCG-Max",
-             "ip": "192.168.1.1", "state": 1, "cpu_pct": 30.0, "mem_pct": 80.0,
-             "num_clients": 10, "satisfaction": 98, "tx_bytes_r": 1000.0, "rx_bytes_r": 2000.0},
+            {
+                "mac": "aa:bb:cc:dd:ee:ff",
+                "name": "Gateway",
+                "model": "UCG-Max",
+                "ip": "192.168.1.1",
+                "state": 1,
+                "cpu_pct": 30.0,
+                "mem_pct": 80.0,
+                "num_clients": 10,
+                "satisfaction": 98,
+                "tx_bytes_r": 1000.0,
+                "rx_bytes_r": 2000.0,
+            },
         ]
         self.db.insert_devices(ts, devices)
         result = self.db.get_latest_devices()
@@ -37,10 +50,21 @@ class TestDatabase:
     def test_insert_and_get_clients(self):
         ts = time.time()
         clients = [
-            {"mac": "11:22:33:44:55:66", "hostname": "laptop", "ip": "192.168.1.50",
-             "is_wired": False, "ssid": "MyNetwork", "signal_dbm": -55,
-             "satisfaction": 95, "channel": 36, "radio": "na",
-             "tx_bytes": 1000000, "rx_bytes": 5000000, "tx_rate": 100.0, "rx_rate": 200.0},
+            {
+                "mac": "11:22:33:44:55:66",
+                "hostname": "laptop",
+                "ip": "192.168.1.50",
+                "is_wired": False,
+                "ssid": "MyNetwork",
+                "signal_dbm": -55,
+                "satisfaction": 95,
+                "channel": 36,
+                "radio": "na",
+                "tx_bytes": 1000000,
+                "rx_bytes": 5000000,
+                "tx_rate": 100.0,
+                "rx_rate": 200.0,
+            },
         ]
         self.db.insert_clients(ts, clients)
         result = self.db.get_latest_clients()
@@ -51,15 +75,33 @@ class TestDatabase:
     def test_insert_netflow_and_top_talkers(self):
         ts = time.time()
         flows = [
-            {"src_ip": "192.168.1.10", "dst_ip": "8.8.8.8",
-             "src_port": 54321, "dst_port": 443, "protocol": 6,
-             "bytes": 50000, "packets": 30},
-            {"src_ip": "192.168.1.10", "dst_ip": "1.1.1.1",
-             "src_port": 54322, "dst_port": 53, "protocol": 17,
-             "bytes": 1000, "packets": 5},
-            {"src_ip": "192.168.1.20", "dst_ip": "8.8.8.8",
-             "src_port": 12345, "dst_port": 80, "protocol": 6,
-             "bytes": 100000, "packets": 60},
+            {
+                "src_ip": "192.168.1.10",
+                "dst_ip": "8.8.8.8",
+                "src_port": 54321,
+                "dst_port": 443,
+                "protocol": 6,
+                "bytes": 50000,
+                "packets": 30,
+            },
+            {
+                "src_ip": "192.168.1.10",
+                "dst_ip": "1.1.1.1",
+                "src_port": 54322,
+                "dst_port": 53,
+                "protocol": 17,
+                "bytes": 1000,
+                "packets": 5,
+            },
+            {
+                "src_ip": "192.168.1.20",
+                "dst_ip": "8.8.8.8",
+                "src_port": 12345,
+                "dst_port": 80,
+                "protocol": 6,
+                "bytes": 100000,
+                "packets": 60,
+            },
         ]
         self.db.insert_netflow_batch(ts, flows)
 
@@ -72,15 +114,33 @@ class TestDatabase:
     def test_top_ports(self):
         ts = time.time()
         flows = [
-            {"src_ip": "10.0.0.1", "dst_ip": "10.0.0.2",
-             "src_port": 1, "dst_port": 443, "protocol": 6,
-             "bytes": 5000, "packets": 10},
-            {"src_ip": "10.0.0.1", "dst_ip": "10.0.0.3",
-             "src_port": 2, "dst_port": 443, "protocol": 6,
-             "bytes": 3000, "packets": 5},
-            {"src_ip": "10.0.0.1", "dst_ip": "10.0.0.2",
-             "src_port": 3, "dst_port": 80, "protocol": 6,
-             "bytes": 1000, "packets": 2},
+            {
+                "src_ip": "10.0.0.1",
+                "dst_ip": "10.0.0.2",
+                "src_port": 1,
+                "dst_port": 443,
+                "protocol": 6,
+                "bytes": 5000,
+                "packets": 10,
+            },
+            {
+                "src_ip": "10.0.0.1",
+                "dst_ip": "10.0.0.3",
+                "src_port": 2,
+                "dst_port": 443,
+                "protocol": 6,
+                "bytes": 3000,
+                "packets": 5,
+            },
+            {
+                "src_ip": "10.0.0.1",
+                "dst_ip": "10.0.0.2",
+                "src_port": 3,
+                "dst_port": 80,
+                "protocol": 6,
+                "bytes": 1000,
+                "packets": 2,
+            },
         ]
         self.db.insert_netflow_batch(ts, flows)
         ports = self.db.get_top_ports(hours=1, limit=10)
@@ -106,11 +166,116 @@ class TestDatabase:
     def test_bandwidth_timeseries(self):
         now = time.time()
         flows = [
-            {"src_ip": "10.0.0.1", "dst_ip": "10.0.0.2",
-             "src_port": 1, "dst_port": 443, "protocol": 6,
-             "bytes": 5000, "packets": 10},
+            {
+                "src_ip": "10.0.0.1",
+                "dst_ip": "10.0.0.2",
+                "src_port": 1,
+                "dst_port": 443,
+                "protocol": 6,
+                "bytes": 5000,
+                "packets": 10,
+            },
         ]
         self.db.insert_netflow_batch(now, flows)
         result = self.db.get_bandwidth_timeseries(hours=1, bucket_minutes=5)
         assert len(result) >= 1
         assert result[0]["total_bytes"] == 5000
+
+    def test_get_db_stats(self):
+        ts = time.time()
+        self.db.insert_wan(ts, "ok", 10.0, "1.2.3.4", 30.0, 80.0)
+        self.db.insert_devices(
+            ts,
+            [
+                {"mac": "aa:bb:cc:dd:ee:ff", "name": "GW", "state": 1},
+            ],
+        )
+        stats = self.db.get_db_stats()
+        assert stats["wan_metrics_rows"] == 1
+        assert stats["devices_rows"] == 1
+        assert stats["db_size_bytes"] > 0
+        assert stats["last_write_ts"] == ts
+
+    def test_cleanup_with_valid_tables(self):
+        """Verify cleanup only touches known tables."""
+        ts = time.time()
+        self.db.insert_wan(ts, "ok", 10.0, "1.2.3.4", 30.0, 80.0)
+        self.db.insert_devices(ts, [{"mac": "aa:bb:cc:dd:ee:ff"}])
+        self.db.insert_clients(ts, [{"mac": "11:22:33:44:55:66"}])
+        flows = [
+            {
+                "src_ip": "10.0.0.1",
+                "dst_ip": "10.0.0.2",
+                "src_port": 1,
+                "dst_port": 443,
+                "protocol": 6,
+                "bytes": 100,
+                "packets": 1,
+            }
+        ]
+        self.db.insert_netflow_batch(ts, flows)
+        self.db.insert_alarms(ts, [{"id": "a1", "type": "test"}])
+
+        # All data present
+        stats = self.db.get_db_stats()
+        assert stats["wan_metrics_rows"] == 1
+        assert stats["netflow_rows"] == 1
+
+        # Cleanup should not error
+        self.db.cleanup(retention_hours=99999)
+        # Data still present (not old enough)
+        stats = self.db.get_db_stats()
+        assert stats["wan_metrics_rows"] == 1
+
+    def test_client_history(self):
+        now = time.time()
+        self.db.insert_clients(
+            now - 1800,
+            [
+                {
+                    "mac": "aa:bb:cc:dd:ee:ff",
+                    "hostname": "test",
+                    "ip": "192.168.1.10",
+                    "is_wired": False,
+                    "ssid": "Net",
+                    "signal_dbm": -60,
+                    "satisfaction": 90,
+                    "channel": 36,
+                    "radio": "na",
+                    "tx_bytes": 100,
+                    "rx_bytes": 200,
+                    "tx_rate": 10.0,
+                    "rx_rate": 20.0,
+                },
+            ],
+        )
+        self.db.insert_clients(
+            now,
+            [
+                {
+                    "mac": "aa:bb:cc:dd:ee:ff",
+                    "hostname": "test",
+                    "ip": "192.168.1.10",
+                    "is_wired": False,
+                    "ssid": "Net",
+                    "signal_dbm": -55,
+                    "satisfaction": 95,
+                    "channel": 36,
+                    "radio": "na",
+                    "tx_bytes": 200,
+                    "rx_bytes": 400,
+                    "tx_rate": 15.0,
+                    "rx_rate": 25.0,
+                },
+            ],
+        )
+        history = self.db.get_client_history("aa:bb:cc:dd:ee:ff", hours=1)
+        assert len(history) == 2
+
+    def test_empty_db_returns_sensible_defaults(self):
+        assert self.db.get_latest_wan() is None
+        assert self.db.get_latest_devices() == []
+        assert self.db.get_latest_clients() == []
+        assert self.db.get_active_alarms() == []
+        assert self.db.get_top_talkers() == []
+        assert self.db.get_wan_history() == []

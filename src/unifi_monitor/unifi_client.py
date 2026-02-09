@@ -2,14 +2,16 @@
 # Thin requests.Session wrapper with CSRF handling and session reuse.
 # Works with any UniFi OS gateway (UCG-Max, UDM, UDR, UDM-SE, etc.).
 
+from __future__ import annotations
+
 import logging
 
-import urllib3
 import requests
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+import urllib3
 
 log = logging.getLogger(__name__)
+
+REQUEST_TIMEOUT = 15  # seconds
 
 
 class UnifiAuthError(Exception):
@@ -21,46 +23,60 @@ class UnifiAPIError(Exception):
 
 
 class UnifiClient:
-    def __init__(self, host: str, username: str, password: str,
-                 site: str = "default", port: int = 443):
+    def __init__(
+        self, host: str, username: str, password: str, site: str = "default", port: int = 443
+    ) -> None:
         self.base_url = f"https://{host}:{port}" if port != 443 else f"https://{host}"
         self.username = username
         self.password = password
         self.site = site
         self.session = requests.Session()
         self.session.verify = False
-        self._csrf_token = None
+        # Suppress SSL warnings only for this session's urllib3 pool
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        self._csrf_token: str | None = None
         self._authenticated = False
 
-    def login(self):
+    def login(self) -> None:
         resp = self.session.post(
             f"{self.base_url}/api/auth/login",
             json={"username": self.username, "password": self.password},
+            timeout=REQUEST_TIMEOUT,
         )
         if resp.status_code != 200:
             self._authenticated = False
             raise UnifiAuthError(f"Login failed: {resp.status_code}")
         self._update_csrf(resp)
+        if not self._csrf_token:
+            raise UnifiAuthError("Login succeeded but no CSRF token in response")
         self._authenticated = True
 
-    def ensure_auth(self):
+    def ensure_auth(self) -> None:
         if not self._authenticated:
             self.login()
 
-    def _update_csrf(self, resp):
+    def close(self) -> None:
+        """Close the underlying requests session."""
+        self.session.close()
+        self._authenticated = False
+
+    def _update_csrf(self, resp: requests.Response) -> None:
         token = resp.headers.get("X-Updated-CSRF-Token") or resp.headers.get("X-CSRF-Token")
         if token:
             self._csrf_token = token
 
-    def _csrf_headers(self):
+    def _csrf_headers(self) -> dict[str, str]:
         return {"X-CSRF-Token": self._csrf_token} if self._csrf_token else {}
 
-    def _request(self, method, path, json_body=None, retry_auth=True):
+    def _request(
+        self, method: str, path: str, json_body: dict | None = None, retry_auth: bool = True
+    ) -> dict:
         resp = self.session.request(
             method,
             f"{self.base_url}{path}",
             json=json_body,
             headers=self._csrf_headers(),
+            timeout=REQUEST_TIMEOUT,
         )
         self._update_csrf(resp)
 
@@ -74,16 +90,16 @@ class UnifiClient:
 
         return resp.json()
 
-    def _get(self, path):
+    def _get(self, path: str) -> dict:
         return self._request("GET", path)
 
-    def _extract(self, envelope):
+    def _extract(self, envelope: dict) -> list[dict]:
         meta = envelope.get("meta", {})
         if meta.get("rc") != "ok":
             raise UnifiAPIError(f"API error: {meta.get('msg', 'unknown')}")
         return envelope.get("data", [])
 
-    def _site(self, suffix):
+    def _site(self, suffix: str) -> str:
         return f"/proxy/network/api/s/{self.site}/{suffix}"
 
     # -- Read endpoints --

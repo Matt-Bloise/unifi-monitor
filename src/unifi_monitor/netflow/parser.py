@@ -3,12 +3,14 @@
 # UCG-Max sends mixed template/data packets -- each IPFIX set is parsed
 # independently to avoid failing the whole packet on one unknown template.
 
+from __future__ import annotations
+
 import logging
 import socket
 import struct
 
 import netflow
-from netflow.ipfix import IPFIXSet, IPFIXHeader, IPFIXTemplateNotRecognized, IPFIXTemplateError
+from netflow.ipfix import IPFIXHeader, IPFIXSet, IPFIXTemplateError, IPFIXTemplateNotRecognized
 
 log = logging.getLogger(__name__)
 
@@ -98,18 +100,18 @@ def _parse_ipfix(data: bytes, templates: dict) -> list[dict]:
     if len(data) < IPFIXHeader.size:
         return []
 
-    header = IPFIXHeader(data[:IPFIXHeader.size])
+    header = IPFIXHeader(data[: IPFIXHeader.size])
     offset = IPFIXHeader.size
     flows = []
 
     while offset < header.length and offset < len(data):
         if offset + 4 > len(data):
             break
-        set_id, set_len = struct.unpack("!HH", data[offset:offset + 4])
+        set_id, set_len = struct.unpack("!HH", data[offset : offset + 4])
         if set_len < 4:
             break
 
-        set_data = data[offset:offset + set_len]
+        set_data = data[offset : offset + set_len]
         offset += set_len
 
         try:

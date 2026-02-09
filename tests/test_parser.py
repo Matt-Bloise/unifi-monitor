@@ -1,7 +1,6 @@
 # test_parser.py -- Tests for NetFlow/IPFIX parser utilities
 
-import struct
-from unifi_monitor.netflow.parser import int_to_ipv4, int_to_ipv6, extract_flow_fields, PROTO_MAP
+from unifi_monitor.netflow.parser import PROTO_MAP, extract_flow_fields, int_to_ipv4, int_to_ipv6
 
 
 class TestIPConversion:
@@ -37,6 +36,7 @@ class TestExtractFlowFields:
 
         class FakeFlow:
             pass
+
         flow = FakeFlow()
         flow.data = data
 
@@ -62,6 +62,7 @@ class TestExtractFlowFields:
 
         class FakeFlow:
             pass
+
         flow = FakeFlow()
         flow.data = data
 
@@ -74,6 +75,7 @@ class TestExtractFlowFields:
     def test_missing_fields_default_to_zero(self):
         class FakeFlow:
             pass
+
         flow = FakeFlow()
         flow.data = {}
 

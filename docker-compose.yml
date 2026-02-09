@@ -2,13 +2,22 @@ services:
   monitor:
     build: .
     ports:
-      - "8080:8080"      # Web dashboard
-      - "2055:2055/udp"  # NetFlow/IPFIX
+      - "${WEB_PORT:-8080}:8080"
+      - "${NETFLOW_PORT:-2055}:2055/udp"
     volumes:
       - monitor-data:/app/data
     env_file:
       - .env
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   monitor-data:
