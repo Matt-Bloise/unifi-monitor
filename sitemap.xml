@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://matt-bloise.github.io/unifi-monitor/</loc>
+         <lastmod>2026-02-09</lastmod>
+    </url>
+    <url>
+         <loc>https://matt-bloise.github.io/unifi-monitor/alerts/</loc>
+         <lastmod>2026-02-09</lastmod>
+    </url>
+    <url>
+         <loc>https://matt-bloise.github.io/unifi-monitor/api-reference/</loc>
+         <lastmod>2026-02-09</lastmod>
+    </url>
+    <url>
+         <loc>https://matt-bloise.github.io/unifi-monitor/architecture/</loc>
+         <lastmod>2026-02-09</lastmod>
+    </url>
+    <url>
+         <loc>https://matt-bloise.github.io/unifi-monitor/configuration/</loc>
+         <lastmod>2026-02-09</lastmod>
+    </url>
+    <url>
+         <loc>https://matt-bloise.github.io/unifi-monitor/deployment/</loc>
+         <lastmod>2026-02-09</lastmod>
+    </url>
+    <url>
+         <loc>https://matt-bloise.github.io/unifi-monitor/netflow/</loc>
+         <lastmod>2026-02-09</lastmod>
+    </url>
+</urlset>
