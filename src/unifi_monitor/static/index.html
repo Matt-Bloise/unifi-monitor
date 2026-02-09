@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniFi Monitor</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>UniFi Monitor</h1>
+            <span class="status" id="last-updated">Connecting...</span>
+        </header>
+
+        <!-- Overview Cards -->
+        <div class="cards" id="overview-cards">
+            <div class="card"><div class="label">Loading...</div></div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid-2">
+            <div class="panel">
+                <h2>Bandwidth (24h)</h2>
+                <div class="chart-container">
+                    <canvas id="bandwidth-chart"></canvas>
+                </div>
+            </div>
+            <div class="panel">
+                <h2>WAN Latency (24h)</h2>
+                <div class="chart-container">
+                    <canvas id="latency-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Traffic Analysis -->
+        <div class="grid-2">
+            <div class="panel">
+                <h2>Top Talkers (1h)</h2>
+                <table>
+                    <thead><tr><th>Source IP</th><th>Bytes</th><th>Flows</th></tr></thead>
+                    <tbody id="talkers-body"></tbody>
+                </table>
+            </div>
+            <div class="panel">
+                <h2>Top Ports (1h)</h2>
+                <table>
+                    <thead><tr><th>Port</th><th>Protocol</th><th>Bytes</th><th>Flows</th></tr></thead>
+                    <tbody id="ports-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Clients -->
+        <div class="panel panel-full">
+            <h2>Connected Clients</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th><th>IP</th><th>SSID</th>
+                        <th>Signal</th><th>Satisfaction</th><th>Channel</th>
+                        <th>RX</th><th>TX</th>
+                    </tr>
+                </thead>
+                <tbody id="clients-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

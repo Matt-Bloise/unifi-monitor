@@ -1,0 +1,14 @@
+services:
+  monitor:
+    build: .
+    ports:
+      - "8080:8080"      # Web dashboard
+      - "2055:2055/udp"  # NetFlow/IPFIX
+    volumes:
+      - monitor-data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  monitor-data:
