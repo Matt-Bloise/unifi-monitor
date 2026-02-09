@@ -3,6 +3,7 @@
 Real-time network monitoring dashboard for UniFi networks. One container, zero external dependencies beyond your gateway.
 
 [![CI](https://github.com/Matt-Bloise/unifi-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/Matt-Bloise/unifi-monitor/actions/workflows/ci.yml)
+[![Docs](https://github.com/Matt-Bloise/unifi-monitor/actions/workflows/docs.yml/badge.svg)](https://matt-bloise.github.io/unifi-monitor/)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.10+-green)
 

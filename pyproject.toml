@@ -35,6 +35,7 @@ Homepage = "https://github.com/Matt-Bloise/unifi-monitor"
 Repository = "https://github.com/Matt-Bloise/unifi-monitor"
 Issues = "https://github.com/Matt-Bloise/unifi-monitor/issues"
 Changelog = "https://github.com/Matt-Bloise/unifi-monitor/blob/master/CHANGELOG.md"
+Documentation = "https://matt-bloise.github.io/unifi-monitor/"
 
 [project.optional-dependencies]
 dev = [
@@ -44,6 +45,9 @@ dev = [
 ]
 netflow = [
     "netflow>=0.12",
+]
+docs = [
+    "mkdocs-material>=9.0",
 ]
 
 [project.scripts]

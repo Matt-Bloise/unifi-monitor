@@ -1,0 +1,47 @@
+site_name: UniFi Monitor
+site_description: Real-time network monitoring dashboard for UniFi networks
+site_url: https://matt-bloise.github.io/unifi-monitor/
+repo_url: https://github.com/Matt-Bloise/unifi-monitor
+repo_name: Matt-Bloise/unifi-monitor
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Configuration: configuration.md
+  - API Reference: api-reference.md
+  - NetFlow: netflow.md
+  - Alerts: alerts.md
+  - Deployment: deployment.md
+
+markdown_extensions:
+  - tables
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
