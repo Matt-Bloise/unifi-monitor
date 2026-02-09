@@ -6,9 +6,6 @@ Real-time network monitoring dashboard for UniFi networks. One container, zero e
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.10+-green)
 
-<!-- Screenshot placeholder: replace with actual dashboard screenshot -->
-<!-- ![Dashboard](docs/screenshot.png) -->
-
 ## Quick Start
 
 ```bash
