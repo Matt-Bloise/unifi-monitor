@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Multi-site support: `UNIFI_SITES=default,office` env var, `site` column on all tables, schema migration for existing DBs, per-site pollers, site selector dropdown in dashboard
 - Historical comparison: `/api/compare` endpoint with latency/bandwidth/client_count metrics, Chart.js overlay of current vs previous time window, summary stat cards with delta %
 - `GET /api/sites` endpoint returns configured site list and default
+- MkDocs documentation site with Material theme, deployed to GitHub Pages
+- Documentation pages: architecture, configuration, API reference, NetFlow, alerts, deployment
+- GitHub Actions workflow for automatic docs deployment on push
+- Directory README files for `src/unifi_monitor/`, `api/`, `netflow/`, `static/`, `tests/`
+
+### Fixed
+- Dashboard crash on load: `updateChartColors()` TDZ error when called before chart variables were declared
 
 ### Changed
 - All DB methods accept optional `site` parameter (defaults to `"default"` for backward compat)
