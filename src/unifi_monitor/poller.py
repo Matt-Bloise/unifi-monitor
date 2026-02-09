@@ -7,6 +7,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Callable
+from typing import Any
 
 from .config import config
 from .db import Database
@@ -107,7 +109,12 @@ def _parse_alarm(a: dict) -> dict:
 
 
 class Poller:
-    def __init__(self, db: Database) -> None:
+    def __init__(
+        self,
+        db: Database,
+        broadcast_fn: Callable[..., Any] | None = None,
+        alert_engine: Any | None = None,
+    ) -> None:
         self.db = db
         self.client = UnifiClient(
             host=config.unifi_host,
@@ -116,6 +123,8 @@ class Poller:
             site=config.unifi_site,
             port=config.unifi_port,
         )
+        self._broadcast_fn = broadcast_fn
+        self._alert_engine = alert_engine
         self._running = False
         self._success_count = 0
         self._error_count = 0
@@ -130,6 +139,18 @@ class Poller:
                 await asyncio.to_thread(self._poll_cycle)
             except Exception as e:
                 log.warning("Poll cycle error: %s", e)
+
+            # Broadcast snapshot to WebSocket clients + evaluate alerts
+            try:
+                snapshot = self._build_snapshot()
+                if self._broadcast_fn and snapshot:
+                    await self._broadcast_fn(snapshot)
+                if self._alert_engine and snapshot:
+                    fired = self._alert_engine.evaluate(snapshot)
+                    if fired:
+                        await self._alert_engine.notify(fired)
+            except Exception as e:
+                log.debug("Post-cycle broadcast/alert error: %s", e)
 
             await asyncio.sleep(config.poll_interval)
 
@@ -202,3 +223,55 @@ class Poller:
         alarms = [_parse_alarm(a) for a in raw]
         if alarms:
             self.db.insert_alarms(ts, alarms)
+
+    def _build_snapshot(self) -> dict | None:
+        """Build a snapshot dict from latest DB state for WS broadcast + alerts."""
+        from .api.routes import _compute_health
+
+        try:
+            wan = self.db.get_latest_wan()
+            devices = self.db.get_latest_devices()
+            clients = self.db.get_latest_clients()
+            alarms = self.db.get_active_alarms()
+        except Exception as e:
+            log.debug("Snapshot build failed: %s", e)
+            return None
+
+        health = _compute_health(wan, devices, alarms)
+        wireless = [c for c in clients if not c.get("is_wired")]
+        wired = [c for c in clients if c.get("is_wired")]
+
+        return {
+            "type": "update",
+            "overview": {
+                "health_score": health["score"],
+                "health_factors": health["factors"],
+                "wan": {
+                    "status": wan.get("status", "unknown") if wan else "no data",
+                    "latency_ms": (
+                        round(wan["latency_ms"], 1) if wan and wan.get("latency_ms") else None
+                    ),
+                    "wan_ip": wan.get("wan_ip") if wan else None,
+                    "cpu_pct": (
+                        round(wan["cpu_pct"], 1) if wan and wan.get("cpu_pct") else None
+                    ),
+                    "mem_pct": (
+                        round(wan["mem_pct"], 1) if wan and wan.get("mem_pct") else None
+                    ),
+                },
+                "devices": {
+                    "total": len(devices),
+                    "online": sum(1 for d in devices if d.get("state") == 1),
+                },
+                "clients": {
+                    "total": len(clients),
+                    "wireless": len(wireless),
+                    "wired": len(wired),
+                },
+                "alarms": len(alarms),
+                "timestamp": time.time(),
+            },
+            "clients": clients,
+            "devices": devices,
+            "alarms": alarms,
+        }

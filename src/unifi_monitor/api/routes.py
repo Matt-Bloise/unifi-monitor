@@ -6,7 +6,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
 from ..db import Database
@@ -256,3 +256,15 @@ def get_alarms(db: Database = Depends(get_db)) -> list[dict]:
         return db.get_active_alarms()
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket) -> None:
+    """WebSocket endpoint for live dashboard updates."""
+    manager = websocket.app.state.ws_manager
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()  # keepalive
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)

@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import config
 from .db import Database
 from .poller import Poller
+from .ws import ConnectionManager
 
 log = logging.getLogger(__name__)
 
@@ -32,8 +33,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.db = db
     app.state.start_time = time.time()
 
-    # Start UniFi API poller
-    poller = Poller(db)
+    # WebSocket broadcast hub
+    ws_manager = ConnectionManager()
+    app.state.ws_manager = ws_manager
+
+    # Start UniFi API poller (with WS broadcast)
+    poller = Poller(db, broadcast_fn=ws_manager.broadcast)
     poller_task = asyncio.create_task(poller.run())
 
     # Start NetFlow collector

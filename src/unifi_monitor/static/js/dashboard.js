@@ -1,8 +1,9 @@
 // dashboard.js -- Fetches API data and renders the dashboard
-// Auto-refreshes every 15 seconds. Pauses when tab is hidden.
+// WebSocket for live updates with REST polling fallback.
 
 const REFRESH_MS = 15000;
 const STALE_THRESHOLD_MS = 60000;
+const WS_MAX_BACKOFF_MS = 30000;
 let bandwidthChart = null;
 let latencyChart = null;
 let lastSuccessfulFetch = 0;
@@ -10,6 +11,81 @@ let refreshTimer = null;
 let currentClients = [];
 let sortColumn = 'rx_bytes';
 let sortDirection = 'desc';
+let expandedClientMac = null;
+let clientDetailCharts = {};
+
+// -- WebSocket connection --
+
+var wsConn = null;
+var wsBackoff = 1000;
+var wsFailCount = 0;
+var wsMode = 'connecting'; // 'live', 'polling', 'connecting', 'disconnected'
+
+function wsConnect() {
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var url = proto + '//' + location.host + '/api/ws';
+    wsConn = new WebSocket(url);
+
+    wsConn.onopen = function() {
+        wsBackoff = 1000;
+        wsFailCount = 0;
+        wsMode = 'live';
+        updateConnectionBadge();
+        // Stop REST polling -- WS takes over
+        stopRefresh();
+    };
+
+    wsConn.onmessage = function(event) {
+        try {
+            var msg = JSON.parse(event.data);
+            if (msg.type === 'update') {
+                lastSuccessfulFetch = Date.now();
+                renderOverview(msg.overview);
+                renderClients(msg.clients);
+                renderDevices(msg.devices);
+                renderAlarms(msg.alarms);
+                updateStatusBanner();
+            }
+        } catch (e) {
+            console.error('WS message parse error:', e);
+        }
+    };
+
+    wsConn.onclose = function() {
+        wsConn = null;
+        wsFailCount++;
+        wsMode = 'disconnected';
+        updateConnectionBadge();
+
+        if (wsFailCount >= 3) {
+            // Fall back to REST polling
+            wsMode = 'polling';
+            updateConnectionBadge();
+            startRefresh();
+        }
+
+        // Reconnect with exponential backoff
+        var delay = Math.min(wsBackoff, WS_MAX_BACKOFF_MS);
+        wsBackoff = Math.min(wsBackoff * 2, WS_MAX_BACKOFF_MS);
+        setTimeout(function() {
+            if (!document.hidden) {
+                wsConnect();
+            }
+        }, delay);
+    };
+
+    wsConn.onerror = function() {
+        // onclose will fire after this
+    };
+}
+
+function updateConnectionBadge() {
+    var badge = document.getElementById('conn-badge');
+    if (!badge) return;
+    badge.className = 'conn-badge conn-' + wsMode;
+    var labels = {live: 'Live', polling: 'Polling', connecting: 'Connecting', disconnected: 'Disconnected'};
+    badge.textContent = labels[wsMode] || wsMode;
+}
 
 // -- Helpers --
 
@@ -191,7 +267,7 @@ function renderAlarms(alarms) {
 
 function renderClients(clientsResponse) {
     if (!clientsResponse) return;
-    // Handle both paginated {data:[]} and raw array formats
+    // Handle paginated {data:[]}, raw array, or WS update formats
     var clients = Array.isArray(clientsResponse) ? clientsResponse : (clientsResponse.data || []);
     currentClients = clients;
     renderClientTable(clients);
@@ -213,8 +289,11 @@ function renderClientTable(clients) {
         return 0;
     });
 
-    tbody.innerHTML = sorted.map(function(c) {
-        return '<tr>' +
+    var html = '';
+    sorted.forEach(function(c) {
+        var mac = c.mac || '';
+        var isExpanded = (mac === expandedClientMac);
+        html += '<tr class="client-row' + (isExpanded ? ' client-row-selected' : '') + '" data-mac="' + escapeHtml(mac) + '">' +
             '<td>' + escapeHtml(c.hostname || c.mac) + '</td>' +
             '<td>' + escapeHtml(c.ip || '-') + '</td>' +
             '<td>' + escapeHtml(c.ssid || (c.is_wired ? 'Wired' : '-')) + '</td>' +
@@ -224,7 +303,29 @@ function renderClientTable(clients) {
             '<td>' + fmtBytes(c.rx_bytes) + '</td>' +
             '<td>' + fmtBytes(c.tx_bytes) + '</td>' +
         '</tr>';
-    }).join('');
+        if (isExpanded) {
+            html += '<tr class="client-detail-row"><td colspan="8">' +
+                '<div class="client-detail" id="client-detail-' + escapeHtml(mac) + '">' +
+                    '<div class="client-detail-meta">' +
+                        '<span>MAC: ' + escapeHtml(mac) + '</span>' +
+                        '<span>Radio: ' + escapeHtml(c.radio || '-') + '</span>' +
+                        '<span>Channel: ' + (c.channel || '-') + '</span>' +
+                        '<span>SSID: ' + escapeHtml(c.ssid || '-') + '</span>' +
+                    '</div>' +
+                    '<div class="client-detail-charts">' +
+                        '<div class="chart-container chart-container-sm"><canvas id="signal-chart-' + escapeHtml(mac) + '"></canvas></div>' +
+                        '<div class="chart-container chart-container-sm"><canvas id="satisfaction-chart-' + escapeHtml(mac) + '"></canvas></div>' +
+                    '</div>' +
+                '</div>' +
+            '</td></tr>';
+        }
+    });
+    tbody.innerHTML = html;
+
+    // Render charts for expanded client
+    if (expandedClientMac) {
+        loadClientCharts(expandedClientMac);
+    }
 
     // Update sort indicators
     document.querySelectorAll('th.sortable').forEach(function(th) {
@@ -233,6 +334,74 @@ function renderClientTable(clients) {
             th.classList.add(sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
         }
     });
+}
+
+// -- Client detail charts --
+
+async function loadClientCharts(mac) {
+    var data = await fetchJSON('/api/clients/' + encodeURIComponent(mac) + '/history?hours=24');
+    if (!data || !data.length) return;
+
+    var labels = data.map(function(d) {
+        return new Date(d.ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    });
+    var signals = data.map(function(d) { return d.signal_dbm; });
+    var satisfactions = data.map(function(d) { return d.satisfaction; });
+
+    var chartOpts = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            x: { ticks: { color: '#8b8fa3', maxTicksLimit: 8 }, grid: { color: '#2a2d3a' } },
+            y: { ticks: { color: '#8b8fa3' }, grid: { color: '#2a2d3a' } },
+        },
+    };
+
+    // Destroy old charts if any
+    if (clientDetailCharts.signal) { clientDetailCharts.signal.destroy(); clientDetailCharts.signal = null; }
+    if (clientDetailCharts.satisfaction) { clientDetailCharts.satisfaction.destroy(); clientDetailCharts.satisfaction = null; }
+
+    var sigEl = document.getElementById('signal-chart-' + mac);
+    if (sigEl) {
+        clientDetailCharts.signal = new Chart(sigEl, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Signal (dBm)',
+                    data: signals,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true, tension: 0.3, pointRadius: 0,
+                }],
+            },
+            options: Object.assign({}, chartOpts, {
+                plugins: { legend: { display: true, labels: { color: '#8b8fa3' } } },
+            }),
+        });
+    }
+
+    var satEl = document.getElementById('satisfaction-chart-' + mac);
+    if (satEl) {
+        clientDetailCharts.satisfaction = new Chart(satEl, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Satisfaction (%)',
+                    data: satisfactions,
+                    borderColor: '#22c55e',
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    fill: true, tension: 0.3, pointRadius: 0,
+                }],
+            },
+            options: Object.assign({}, chartOpts, {
+                plugins: { legend: { display: true, labels: { color: '#8b8fa3' } } },
+                scales: Object.assign({}, chartOpts.scales, { y: { ticks: { color: '#8b8fa3' }, grid: { color: '#2a2d3a' }, min: 0, max: 100 } }),
+            }),
+        });
+    }
 }
 
 function renderTopTalkers(talkers) {
@@ -344,9 +513,10 @@ function renderLatencyChart(data) {
     }
 }
 
-// -- Column sorting --
+// -- Column sorting + client detail click --
 
 document.addEventListener('click', function(e) {
+    // Column sorting
     if (e.target.classList.contains('sortable')) {
         var col = e.target.dataset.sort;
         if (sortColumn === col) {
@@ -358,10 +528,24 @@ document.addEventListener('click', function(e) {
         if (currentClients.length > 0) {
             renderClientTable(currentClients);
         }
+        return;
+    }
+
+    // Client row click -> expand detail
+    var row = e.target.closest('.client-row');
+    if (row) {
+        var mac = row.dataset.mac;
+        if (!mac) return;
+        if (expandedClientMac === mac) {
+            expandedClientMac = null;
+        } else {
+            expandedClientMac = mac;
+        }
+        renderClientTable(currentClients);
     }
 });
 
-// -- Main loop --
+// -- Main loop (REST fallback) --
 
 async function refresh() {
     var results = await Promise.all([
@@ -410,8 +594,16 @@ function stopRefresh() {
 document.addEventListener('visibilitychange', function() {
     if (document.hidden) {
         stopRefresh();
+        if (wsConn) {
+            wsConn.close();
+            wsConn = null;
+        }
     } else {
-        startRefresh();
+        if (wsMode === 'polling' || !wsConn) {
+            wsConnect();
+        }
+        // Also do an immediate REST fetch for charts (WS doesn't carry chart data)
+        refresh();
     }
 });
 
@@ -423,5 +615,6 @@ document.getElementById('refresh-btn').addEventListener('click', function() {
 // Periodic stale check (even when paused, update the banner)
 setInterval(updateStatusBanner, 10000);
 
-// Initial load
-startRefresh();
+// Initial load: start WS + initial REST fetch for chart data
+wsConnect();
+refresh();
