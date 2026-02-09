@@ -9,6 +9,24 @@ description = "Real-time network monitoring dashboard for UniFi networks with Ne
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
+authors = [{name = "Matt Bloise"}]
+keywords = ["unifi", "monitoring", "dashboard", "netflow", "ipfix", "network"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Networking :: Monitoring",
+]
+
+[project.urls]
+Homepage = "https://github.com/Matt-Bloise/unifi-monitor"
+Repository = "https://github.com/Matt-Bloise/unifi-monitor"
+Issues = "https://github.com/Matt-Bloise/unifi-monitor/issues"
+Changelog = "https://github.com/Matt-Bloise/unifi-monitor/blob/master/CHANGELOG.md"
 dependencies = [
     "fastapi>=0.104",
     "uvicorn[standard]>=0.24",
@@ -22,7 +40,6 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
-    "httpx>=0.25",
     "ruff>=0.8",
 ]
 netflow = [

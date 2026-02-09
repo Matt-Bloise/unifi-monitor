@@ -3,7 +3,7 @@
 ## Quick Setup
 
 ```bash
-git clone https://github.com/matt-bloise/unifi-monitor.git
+git clone https://github.com/Matt-Bloise/unifi-monitor.git
 cd unifi-monitor
 pip install -e ".[dev,netflow]"
 cp .env.example .env

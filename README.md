@@ -2,6 +2,7 @@
 
 Real-time network monitoring dashboard for UniFi networks. One container, zero external dependencies beyond your gateway.
 
+[![CI](https://github.com/Matt-Bloise/unifi-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/Matt-Bloise/unifi-monitor/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Python](https://img.shields.io/badge/python-3.10+-green)
 
@@ -11,7 +12,7 @@ Real-time network monitoring dashboard for UniFi networks. One container, zero e
 ## Quick Start
 
 ```bash
-git clone https://github.com/matt-bloise/unifi-monitor.git
+git clone https://github.com/Matt-Bloise/unifi-monitor.git
 cd unifi-monitor
 cp .env.example .env
 # Edit .env: set UNIFI_HOST, UNIFI_USERNAME, UNIFI_PASSWORD
@@ -19,6 +20,8 @@ docker compose up -d
 ```
 
 Dashboard at **http://localhost:8080**.
+
+> **Security note:** The dashboard has no built-in authentication. Bind to `localhost` or place behind a reverse proxy with auth if exposed beyond your local network.
 
 ## Features
 
@@ -105,6 +108,7 @@ All settings via environment variables (`.env` or `docker-compose.yml`):
 | `WEB_HOST` | `0.0.0.0` | Dashboard bind address |
 | `WEB_PORT` | `8080` | Dashboard port |
 | `NETFLOW_ENABLED` | `true` | Enable NetFlow/IPFIX collector |
+| `NETFLOW_HOST` | `0.0.0.0` | NetFlow listener bind address |
 | `NETFLOW_PORT` | `2055` | NetFlow listener port |
 | `POLL_INTERVAL` | `30` | Seconds between API polls (min 5) |
 | `RETENTION_HOURS` | `168` | Data retention in hours (7 days) |
