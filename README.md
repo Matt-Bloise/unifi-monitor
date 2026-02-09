@@ -9,6 +9,25 @@ Real-time network monitoring dashboard for UniFi networks. One container, zero e
 
 ## Quick Start
 
+### From GHCR (recommended)
+
+```bash
+docker pull ghcr.io/matt-bloise/unifi-monitor:latest
+```
+
+Create a `.env` file with your gateway credentials, then:
+
+```bash
+docker run -d --name unifi-monitor \
+  --env-file .env \
+  -p 8080:8080 -p 2055:2055/udp \
+  -v monitor-data:/app/data \
+  --restart unless-stopped \
+  ghcr.io/matt-bloise/unifi-monitor:latest
+```
+
+### From source
+
 ```bash
 git clone https://github.com/Matt-Bloise/unifi-monitor.git
 cd unifi-monitor

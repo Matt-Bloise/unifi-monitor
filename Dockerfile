@@ -1,4 +1,7 @@
 FROM python:3.12-slim AS builder
+LABEL org.opencontainers.image.source=https://github.com/Matt-Bloise/unifi-monitor
+LABEL org.opencontainers.image.description="Real-time network monitoring dashboard for UniFi networks"
+LABEL org.opencontainers.image.licenses=MIT
 WORKDIR /build
 COPY pyproject.toml .
 COPY src/ src/
