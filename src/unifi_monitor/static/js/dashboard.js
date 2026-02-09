@@ -30,41 +30,43 @@ function getChartColors() {
 }
 
 function updateChartColors() {
-    var c = getChartColors();
-    var charts = [bandwidthChart, latencyChart, compareChart];
-    if (clientDetailCharts.signal) charts.push(clientDetailCharts.signal);
-    if (clientDetailCharts.satisfaction) charts.push(clientDetailCharts.satisfaction);
+    try {
+        var c = getChartColors();
+        var charts = [bandwidthChart, latencyChart, compareChart];
+        if (clientDetailCharts && clientDetailCharts.signal) charts.push(clientDetailCharts.signal);
+        if (clientDetailCharts && clientDetailCharts.satisfaction) charts.push(clientDetailCharts.satisfaction);
 
-    charts.forEach(function(chart) {
-        if (!chart) return;
-        var ds = chart.data.datasets[0];
-        if (!ds) return;
-        // Determine base color: green for latency/satisfaction, accent for others
-        var isGreen = ds.label && (ds.label.indexOf('Latency') >= 0 || ds.label.indexOf('Satisfaction') >= 0);
-        var base = isGreen ? c.green : c.accent;
-        ds.borderColor = base;
-        ds.backgroundColor = base + '1a';
-        // Update scales
-        if (chart.options.scales) {
-            if (chart.options.scales.x) {
-                chart.options.scales.x.ticks.color = c.textDim;
-                chart.options.scales.x.grid.color = c.border;
+        charts.forEach(function(chart) {
+            if (!chart) return;
+            var ds = chart.data.datasets[0];
+            if (!ds) return;
+            var isGreen = ds.label && (ds.label.indexOf('Latency') >= 0 || ds.label.indexOf('Satisfaction') >= 0);
+            var base = isGreen ? c.green : c.accent;
+            ds.borderColor = base;
+            ds.backgroundColor = base + '1a';
+            if (chart.options.scales) {
+                if (chart.options.scales.x) {
+                    chart.options.scales.x.ticks.color = c.textDim;
+                    chart.options.scales.x.grid.color = c.border;
+                }
+                if (chart.options.scales.y) {
+                    chart.options.scales.y.ticks.color = c.textDim;
+                    chart.options.scales.y.grid.color = c.border;
+                }
             }
-            if (chart.options.scales.y) {
-                chart.options.scales.y.ticks.color = c.textDim;
-                chart.options.scales.y.grid.color = c.border;
+            if (chart.options.plugins && chart.options.plugins.legend &&
+                chart.options.plugins.legend.labels) {
+                chart.options.plugins.legend.labels.color = c.textDim;
             }
-        }
-        // Update legend color if visible
-        if (chart.options.plugins && chart.options.plugins.legend &&
-            chart.options.plugins.legend.labels) {
-            chart.options.plugins.legend.labels.color = c.textDim;
-        }
-        chart.update('none');
-    });
+            chart.update('none');
+        });
+    } catch (e) {
+        // Charts not yet initialized (TDZ during early theme init)
+    }
 }
 
 // Apply theme immediately (before render)
+// Note: updateChartColors() is guarded and safe to call before charts exist
 setTheme(getTheme());
 
 const REFRESH_MS = 15000;
