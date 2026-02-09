@@ -1,6 +1,72 @@
 // dashboard.js -- Fetches API data and renders the dashboard
 // WebSocket for live updates with REST polling fallback.
 
+// -- Theme system (runs before DOM-dependent code) --
+
+function getTheme() {
+    return localStorage.getItem('theme') || 'dark';
+}
+
+function setTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+    var btn = document.getElementById('theme-toggle');
+    if (btn) btn.textContent = theme === 'dark' ? '\u2600' : '\u263D';
+    updateChartColors();
+}
+
+function toggleTheme() {
+    setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+}
+
+function getChartColors() {
+    var style = getComputedStyle(document.documentElement);
+    return {
+        accent: style.getPropertyValue('--accent').trim(),
+        green: style.getPropertyValue('--green').trim(),
+        textDim: style.getPropertyValue('--text-dim').trim(),
+        border: style.getPropertyValue('--border').trim(),
+    };
+}
+
+function updateChartColors() {
+    var c = getChartColors();
+    var charts = [bandwidthChart, latencyChart];
+    if (clientDetailCharts.signal) charts.push(clientDetailCharts.signal);
+    if (clientDetailCharts.satisfaction) charts.push(clientDetailCharts.satisfaction);
+
+    charts.forEach(function(chart) {
+        if (!chart) return;
+        var ds = chart.data.datasets[0];
+        if (!ds) return;
+        // Determine base color: green for latency/satisfaction, accent for others
+        var isGreen = ds.label && (ds.label.indexOf('Latency') >= 0 || ds.label.indexOf('Satisfaction') >= 0);
+        var base = isGreen ? c.green : c.accent;
+        ds.borderColor = base;
+        ds.backgroundColor = base + '1a';
+        // Update scales
+        if (chart.options.scales) {
+            if (chart.options.scales.x) {
+                chart.options.scales.x.ticks.color = c.textDim;
+                chart.options.scales.x.grid.color = c.border;
+            }
+            if (chart.options.scales.y) {
+                chart.options.scales.y.ticks.color = c.textDim;
+                chart.options.scales.y.grid.color = c.border;
+            }
+        }
+        // Update legend color if visible
+        if (chart.options.plugins && chart.options.plugins.legend &&
+            chart.options.plugins.legend.labels) {
+            chart.options.plugins.legend.labels.color = c.textDim;
+        }
+        chart.update('none');
+    });
+}
+
+// Apply theme immediately (before render)
+setTheme(getTheme());
+
 const REFRESH_MS = 15000;
 const STALE_THRESHOLD_MS = 60000;
 const WS_MAX_BACKOFF_MS = 30000;
@@ -363,13 +429,14 @@ async function loadClientCharts(mac) {
     var signals = data.map(function(d) { return d.signal_dbm; });
     var satisfactions = data.map(function(d) { return d.satisfaction; });
 
+    var cc = getChartColors();
     var chartOpts = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-            x: { ticks: { color: '#8b8fa3', maxTicksLimit: 8 }, grid: { color: '#2a2d3a' } },
-            y: { ticks: { color: '#8b8fa3' }, grid: { color: '#2a2d3a' } },
+            x: { ticks: { color: cc.textDim, maxTicksLimit: 8 }, grid: { color: cc.border } },
+            y: { ticks: { color: cc.textDim }, grid: { color: cc.border } },
         },
     };
 
@@ -386,13 +453,13 @@ async function loadClientCharts(mac) {
                 datasets: [{
                     label: 'Signal (dBm)',
                     data: signals,
-                    borderColor: '#3b82f6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderColor: cc.accent,
+                    backgroundColor: cc.accent + '1a',
                     fill: true, tension: 0.3, pointRadius: 0,
                 }],
             },
             options: Object.assign({}, chartOpts, {
-                plugins: { legend: { display: true, labels: { color: '#8b8fa3' } } },
+                plugins: { legend: { display: true, labels: { color: cc.textDim } } },
             }),
         });
     }
@@ -406,14 +473,14 @@ async function loadClientCharts(mac) {
                 datasets: [{
                     label: 'Satisfaction (%)',
                     data: satisfactions,
-                    borderColor: '#22c55e',
-                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    borderColor: cc.green,
+                    backgroundColor: cc.green + '1a',
                     fill: true, tension: 0.3, pointRadius: 0,
                 }],
             },
             options: Object.assign({}, chartOpts, {
-                plugins: { legend: { display: true, labels: { color: '#8b8fa3' } } },
-                scales: Object.assign({}, chartOpts.scales, { y: { ticks: { color: '#8b8fa3' }, grid: { color: '#2a2d3a' }, min: 0, max: 100 } }),
+                plugins: { legend: { display: true, labels: { color: cc.textDim } } },
+                scales: Object.assign({}, chartOpts.scales, { y: { ticks: { color: cc.textDim }, grid: { color: cc.border }, min: 0, max: 100 } }),
             }),
         });
     }
@@ -460,6 +527,7 @@ function renderBandwidthChart(data) {
         bandwidthChart.data.datasets[0].data = mbps;
         bandwidthChart.update('none');
     } else {
+        var cc = getChartColors();
         bandwidthChart = new Chart(ctx, {
             type: 'line',
             data: {
@@ -467,8 +535,8 @@ function renderBandwidthChart(data) {
                 datasets: [{
                     label: 'Bandwidth (Mbps)',
                     data: mbps,
-                    borderColor: '#3b82f6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderColor: cc.accent,
+                    backgroundColor: cc.accent + '1a',
                     fill: true,
                     tension: 0.3,
                     pointRadius: 0,
@@ -479,8 +547,8 @@ function renderBandwidthChart(data) {
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    x: { ticks: { color: '#8b8fa3', maxTicksLimit: 12 }, grid: { color: '#2a2d3a' } },
-                    y: { ticks: { color: '#8b8fa3' }, grid: { color: '#2a2d3a' }, beginAtZero: true },
+                    x: { ticks: { color: cc.textDim, maxTicksLimit: 12 }, grid: { color: cc.border } },
+                    y: { ticks: { color: cc.textDim }, grid: { color: cc.border }, beginAtZero: true },
                 },
             },
         });
@@ -501,6 +569,7 @@ function renderLatencyChart(data) {
         latencyChart.data.datasets[0].data = latency;
         latencyChart.update('none');
     } else {
+        var cc = getChartColors();
         latencyChart = new Chart(ctx, {
             type: 'line',
             data: {
@@ -508,8 +577,8 @@ function renderLatencyChart(data) {
                 datasets: [{
                     label: 'Latency (ms)',
                     data: latency,
-                    borderColor: '#22c55e',
-                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    borderColor: cc.green,
+                    backgroundColor: cc.green + '1a',
                     fill: true,
                     tension: 0.3,
                     pointRadius: 0,
@@ -520,8 +589,8 @@ function renderLatencyChart(data) {
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    x: { ticks: { color: '#8b8fa3', maxTicksLimit: 12 }, grid: { color: '#2a2d3a' } },
-                    y: { ticks: { color: '#8b8fa3' }, grid: { color: '#2a2d3a' }, beginAtZero: true },
+                    x: { ticks: { color: cc.textDim, maxTicksLimit: 12 }, grid: { color: cc.border } },
+                    y: { ticks: { color: cc.textDim }, grid: { color: cc.border }, beginAtZero: true },
                 },
             },
         });
@@ -653,6 +722,9 @@ document.addEventListener('visibilitychange', function() {
 document.getElementById('refresh-btn').addEventListener('click', function() {
     refresh();
 });
+
+// Theme toggle
+document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
 
 // Periodic stale check (even when paused, update the banner)
 setInterval(updateStatusBanner, 10000);
