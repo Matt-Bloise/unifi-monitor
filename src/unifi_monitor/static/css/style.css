@@ -229,6 +229,42 @@ header .status {
     color: var(--text-dim);
 }
 
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.panel-header h2 {
+    margin-bottom: 0;
+}
+
+.export-btns {
+    display: flex;
+    gap: 6px;
+}
+
+.btn-export {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.btn-export:hover {
+    background: var(--border);
+    border-color: var(--accent);
+    color: var(--text);
+}
+
 /* Tables */
 .table-wrap {
     overflow-x: auto;

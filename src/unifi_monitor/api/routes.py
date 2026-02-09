@@ -3,13 +3,15 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import secrets
 import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from ..config import config
 from ..db import Database
@@ -275,6 +277,51 @@ def get_alarms(db: Database = Depends(get_db)) -> list[dict]:
         return db.get_active_alarms()
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+def _csv_response(rows: list[dict], name: str) -> StreamingResponse:
+    """Build a CSV streaming response from a list of dicts."""
+    buf = io.StringIO()
+    if not rows:
+        buf.write("no data\n")
+    else:
+        writer = csv.DictWriter(buf, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{name}.csv"'},
+    )
+
+
+@router.get("/export/clients")
+def export_clients(
+    db: Database = Depends(get_db),
+    hours: float = Query(24, ge=0.1, le=8760),
+    format: str = Query("json", pattern=r"^(json|csv)$"),
+    limit: int = Query(10000, ge=1, le=10000),
+) -> Any:
+    """Export client data as JSON or CSV."""
+    rows = db.get_clients_export(hours, limit)
+    if format == "csv":
+        return _csv_response(rows, "clients")
+    return rows
+
+
+@router.get("/export/wan")
+def export_wan(
+    db: Database = Depends(get_db),
+    hours: float = Query(24, ge=0.1, le=8760),
+    format: str = Query("json", pattern=r"^(json|csv)$"),
+    limit: int = Query(10000, ge=1, le=10000),
+) -> Any:
+    """Export WAN metrics as JSON or CSV."""
+    rows = db.get_wan_export(hours, limit)
+    if format == "csv":
+        return _csv_response(rows, "wan")
+    return rows
 
 
 @router.websocket("/ws")

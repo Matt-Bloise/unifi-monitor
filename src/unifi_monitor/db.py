@@ -298,6 +298,20 @@ class Database:
             "SELECT * FROM alarms WHERE ts = ? AND archived = 0", (latest_ts["ts"],)
         ).fetchall()
 
+    def get_clients_export(self, hours: float = 24, limit: int = 10000) -> list[dict]:
+        cutoff = time.time() - (hours * 3600)
+        return self._conn.execute(
+            "SELECT * FROM clients WHERE ts > ? ORDER BY ts DESC LIMIT ?",
+            (cutoff, limit),
+        ).fetchall()
+
+    def get_wan_export(self, hours: float = 24, limit: int = 10000) -> list[dict]:
+        cutoff = time.time() - (hours * 3600)
+        return self._conn.execute(
+            "SELECT * FROM wan_metrics WHERE ts > ? ORDER BY ts DESC LIMIT ?",
+            (cutoff, limit),
+        ).fetchall()
+
     def get_db_stats(self) -> dict:
         """Return row counts per table, DB file size, and last write timestamp."""
         stats: dict = {"last_write_ts": self._last_write_ts}

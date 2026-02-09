@@ -531,6 +531,30 @@ function renderLatencyChart(data) {
 // -- Column sorting + client detail click --
 
 document.addEventListener('click', function(e) {
+    // Export button
+    if (e.target.classList.contains('btn-export')) {
+        var kind = e.target.dataset.export;
+        var fmt = e.target.dataset.format;
+        var url = '/api/export/' + kind + '?format=' + fmt;
+        fetch(url).then(function(resp) {
+            if (!resp.ok) { showToast('Export failed: ' + resp.status); return; }
+            var ext = fmt === 'csv' ? 'csv' : 'json';
+            var mime = fmt === 'csv' ? 'text/csv' : 'application/json';
+            return resp.blob().then(function(blob) {
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(new Blob([blob], {type: mime}));
+                a.download = kind + '.' + ext;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+            });
+        }).catch(function(err) {
+            showToast('Export error: ' + err.message);
+        });
+        return;
+    }
+
     // Column sorting
     if (e.target.classList.contains('sortable')) {
         var col = e.target.dataset.sort;
