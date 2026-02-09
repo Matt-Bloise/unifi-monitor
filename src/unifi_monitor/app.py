@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .alerts import AlertEngine
 from .config import config
 from .db import Database
 from .poller import Poller
@@ -37,8 +38,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     ws_manager = ConnectionManager()
     app.state.ws_manager = ws_manager
 
-    # Start UniFi API poller (with WS broadcast)
-    poller = Poller(db, broadcast_fn=ws_manager.broadcast)
+    # Alert engine (webhook notifications)
+    alert_engine = None
+    if config.alert_webhook_url:
+        alert_engine = AlertEngine(webhook_url=config.alert_webhook_url)
+        log.info("Alert engine enabled (webhook: %s)", config.alert_webhook_url[:50])
+
+    # Start UniFi API poller (with WS broadcast + alerts)
+    poller = Poller(db, broadcast_fn=ws_manager.broadcast, alert_engine=alert_engine)
     poller_task = asyncio.create_task(poller.run())
 
     # Start NetFlow collector

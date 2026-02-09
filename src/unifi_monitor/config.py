@@ -62,5 +62,9 @@ class Config:
     # Data retention
     retention_hours: int = _safe_int("RETENTION_HOURS", 168, min_val=1)
 
+    # Alerts
+    alert_webhook_url: str = os.getenv("ALERT_WEBHOOK_URL", "")
+    alert_cooldown: int = _safe_int("ALERT_COOLDOWN", 300, min_val=30)
+
 
 config = Config()
