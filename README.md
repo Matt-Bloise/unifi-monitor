@@ -31,6 +31,9 @@ Dashboard at **http://localhost:8080**.
 - **WAN tracking** -- latency history, status changes, gateway CPU/memory
 - **Device status** -- gateway + AP cards with online/offline badges
 - **Connection resilience** -- auto-reconnect with exponential backoff, REST polling fallback
+- **DNS traffic analysis** -- top DNS clients and servers from NetFlow data (port 53/853)
+- **Multi-site support** -- monitor multiple UniFi sites with site selector dropdown
+- **Historical comparison** -- compare latency, bandwidth, or client count vs last week with Chart.js overlay
 - **Data export** -- download client or WAN data as CSV or JSON from the dashboard
 - **Dark/light theme** -- toggle between dark and light mode (persisted in browser)
 - **Auto-pause** -- stops updates when browser tab is hidden
@@ -102,7 +105,8 @@ All settings via environment variables (`.env` or `docker-compose.yml`):
 | `UNIFI_HOST` | `192.168.1.1` | Gateway IP or hostname |
 | `UNIFI_USERNAME` | `admin` | Local admin username |
 | `UNIFI_PASSWORD` | *(required)* | Local admin password |
-| `UNIFI_SITE` | `default` | UniFi site name |
+| `UNIFI_SITE` | `default` | UniFi site name (single site) |
+| `UNIFI_SITES` | *(empty)* | Comma-separated site names for multi-site (overrides `UNIFI_SITE`) |
 | `UNIFI_PORT` | `443` | Gateway HTTPS port |
 | `WEB_HOST` | `0.0.0.0` | Dashboard bind address |
 | `WEB_PORT` | `8080` | Dashboard port |
@@ -131,6 +135,11 @@ All settings via environment variables (`.env` or `docker-compose.yml`):
 | `GET /api/traffic/top-destinations?hours=1&limit=20` | Top destination IPs |
 | `GET /api/traffic/top-ports?hours=1&limit=20` | Top ports by bytes |
 | `GET /api/traffic/bandwidth?hours=24&bucket_minutes=5` | Bandwidth timeseries |
+| `GET /api/traffic/dns-queries?hours=1&limit=100` | DNS query aggregates (per-client-per-server) |
+| `GET /api/traffic/dns-top-clients?hours=1&limit=20` | Top DNS-querying clients |
+| `GET /api/traffic/dns-top-servers?hours=1&limit=20` | Top DNS servers |
+| `GET /api/compare?metric=latency&hours=24&offset_hours=168` | Historical comparison (latency/bandwidth/client_count) |
+| `GET /api/sites` | Configured site list and default |
 | `GET /api/alarms` | Active (non-archived) alarms |
 | `GET /api/export/clients?hours=24&format=json&limit=10000` | Export client data (JSON or CSV) |
 | `GET /api/export/wan?hours=24&format=json&limit=10000` | Export WAN metrics (JSON or CSV) |

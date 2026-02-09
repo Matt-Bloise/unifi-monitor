@@ -127,9 +127,7 @@ def list_sites(request: Request) -> dict:
 
 
 @router.get("/overview")
-def overview(
-    db: Database = Depends(get_db), site: str = Depends(get_site)
-) -> dict:
+def overview(db: Database = Depends(get_db), site: str = Depends(get_site)) -> dict:
     """Dashboard overview: WAN status, device/client counts, health score."""
     try:
         wan = db.get_latest_wan(site=site)
@@ -204,9 +202,7 @@ def client_history(
 
 
 @router.get("/devices")
-def get_devices(
-    db: Database = Depends(get_db), site: str = Depends(get_site)
-) -> list[dict]:
+def get_devices(db: Database = Depends(get_db), site: str = Depends(get_site)) -> list[dict]:
     """All adopted devices with stats."""
     try:
         return db.get_latest_devices(site=site)
@@ -360,9 +356,7 @@ def compare(
 
 
 @router.get("/alarms")
-def get_alarms(
-    db: Database = Depends(get_db), site: str = Depends(get_site)
-) -> list[dict]:
+def get_alarms(db: Database = Depends(get_db), site: str = Depends(get_site)) -> list[dict]:
     """Active (non-archived) alarms."""
     try:
         return db.get_active_alarms(site=site)

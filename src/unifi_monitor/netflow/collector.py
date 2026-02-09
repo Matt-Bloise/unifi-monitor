@@ -19,9 +19,7 @@ MAX_PACKET_SIZE = 65535
 class NetFlowProtocol(asyncio.DatagramProtocol):
     """Asyncio UDP protocol for NetFlow/IPFIX packets."""
 
-    def __init__(
-        self, db: Database, batch_interval: float = 10.0, site: str = "default"
-    ) -> None:
+    def __init__(self, db: Database, batch_interval: float = 10.0, site: str = "default") -> None:
         self.db = db
         self.site = site
         self.templates: dict = {"netflow": {}, "ipfix": {}}

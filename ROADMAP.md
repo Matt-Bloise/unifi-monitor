@@ -1,6 +1,6 @@
 # Roadmap
 
-## v0.3.0 (Current)
+## v0.3.0
 - [x] WebSocket live updates (replace polling)
 - [x] Per-client detail view with signal/satisfaction charts
 - [x] Configurable alert thresholds
@@ -9,10 +9,10 @@
 - [x] Data export (CSV/JSON)
 - [x] Dark/light theme toggle
 
-## v0.4.0
-- [ ] DNS query logging (via NetFlow)
-- [ ] Multi-site support
-- [ ] Historical comparison (today vs last week)
+## v0.4.0 (Current)
+- [x] DNS query logging (via NetFlow)
+- [x] Multi-site support
+- [x] Historical comparison (today vs last week)
 
 ## v0.5.0
 - [ ] Grafana-compatible /metrics endpoint (Prometheus)

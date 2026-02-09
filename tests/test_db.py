@@ -362,8 +362,7 @@ class TestMultiSite:
 
     def test_site_column_exists(self):
         cols = [
-            r["name"]
-            for r in self.db._conn.execute("PRAGMA table_info(wan_metrics)").fetchall()
+            r["name"] for r in self.db._conn.execute("PRAGMA table_info(wan_metrics)").fetchall()
         ]
         assert "site" in cols
 
@@ -435,8 +434,15 @@ class TestComparison:
     def test_bandwidth_comparison(self):
         now = time.time()
         flows = [
-            {"src_ip": "10.0.0.1", "dst_ip": "10.0.0.2", "src_port": 1,
-             "dst_port": 443, "protocol": 6, "bytes": 5000, "packets": 10},
+            {
+                "src_ip": "10.0.0.1",
+                "dst_ip": "10.0.0.2",
+                "src_port": 1,
+                "dst_port": 443,
+                "protocol": 6,
+                "bytes": 5000,
+                "packets": 10,
+            },
         ]
         self.db.insert_netflow_batch(now, flows)
         self.db.insert_netflow_batch(now - (168 * 3600), flows)

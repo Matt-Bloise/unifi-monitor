@@ -123,9 +123,7 @@ class Database:
         for table in _VALID_TABLES:
             cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
             if "site" not in cols:
-                conn.execute(
-                    f"ALTER TABLE {table} ADD COLUMN site TEXT NOT NULL DEFAULT 'default'"
-                )
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN site TEXT NOT NULL DEFAULT 'default'")
 
         conn.executescript("""
             CREATE INDEX IF NOT EXISTS idx_wan_site_ts ON wan_metrics(site, ts);
@@ -177,9 +175,7 @@ class Database:
             for d in devices
         ]
         with self._conn:
-            self._conn.executemany(
-                "INSERT INTO devices VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows
-            )
+            self._conn.executemany("INSERT INTO devices VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
         self._last_write_ts = ts
 
     def insert_clients(self, ts: float, clients: list[dict], site: str = "default") -> None:
@@ -209,9 +205,7 @@ class Database:
             )
         self._last_write_ts = ts
 
-    def insert_netflow_batch(
-        self, ts: float, flows: list[dict], site: str = "default"
-    ) -> None:
+    def insert_netflow_batch(self, ts: float, flows: list[dict], site: str = "default") -> None:
         rows = [
             (
                 ts,
@@ -281,9 +275,7 @@ class Database:
             "SELECT * FROM clients WHERE ts = ? AND site = ?", (latest_ts["ts"], site)
         ).fetchall()
 
-    def get_client_history(
-        self, mac: str, hours: float = 24, site: str = "default"
-    ) -> list[dict]:
+    def get_client_history(self, mac: str, hours: float = 24, site: str = "default") -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         return self._conn.execute(
             "SELECT * FROM clients WHERE mac = ? AND ts > ? AND site = ? ORDER BY ts",
@@ -314,9 +306,7 @@ class Database:
             (cutoff, site, limit),
         ).fetchall()
 
-    def get_top_ports(
-        self, hours: float = 1, limit: int = 20, site: str = "default"
-    ) -> list[dict]:
+    def get_top_ports(self, hours: float = 1, limit: int = 20, site: str = "default") -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         return self._conn.execute(
             """SELECT dst_port, protocol, SUM(bytes) as total_bytes, COUNT(*) as flow_count

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "unifi-monitor"
-version = "0.3.0"
+version = "0.4.0"
 description = "Real-time network monitoring dashboard for UniFi networks with NetFlow/IPFIX visualization"
 readme = "README.md"
 license = {text = "MIT"}

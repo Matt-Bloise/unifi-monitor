@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-02-09
+
+### Added
+- DNS traffic analysis: `dns-queries`, `dns-top-clients`, `dns-top-servers` endpoints and dashboard panels (filters NetFlow by port 53/853)
+- Multi-site support: `UNIFI_SITES=default,office` env var, `site` column on all tables, schema migration for existing DBs, per-site pollers, site selector dropdown in dashboard
+- Historical comparison: `/api/compare` endpoint with latency/bandwidth/client_count metrics, Chart.js overlay of current vs previous time window, summary stat cards with delta %
+- `GET /api/sites` endpoint returns configured site list and default
+
+### Changed
+- All DB methods accept optional `site` parameter (defaults to `"default"` for backward compat)
+- All API endpoints accept optional `?site=` query parameter
+- NetFlow collector tagged with primary site name
+- Dashboard init fetches site list before connecting
+
 ## [0.3.0] - 2026-02-09
 
 ### Added
@@ -55,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Multi-stage Docker build with non-root user
 - CI: ruff lint + format check + pytest
 
+[0.4.0]: https://github.com/Matt-Bloise/unifi-monitor/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Matt-Bloise/unifi-monitor/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Matt-Bloise/unifi-monitor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Matt-Bloise/unifi-monitor/releases/tag/v0.1.0
