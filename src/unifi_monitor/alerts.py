@@ -100,14 +100,18 @@ class AlertEngine:
                 continue
 
             self._cooldowns[rule.key] = now
-            fired.append({
-                "rule": f"{rule.metric} {rule.operator} {rule.threshold}",
-                "value": value,
-                "message": rule.message.format(
-                    value=value, metric=rule.metric, threshold=rule.threshold,
-                ),
-                "ts": now,
-            })
+            fired.append(
+                {
+                    "rule": f"{rule.metric} {rule.operator} {rule.threshold}",
+                    "value": value,
+                    "message": rule.message.format(
+                        value=value,
+                        metric=rule.metric,
+                        threshold=rule.threshold,
+                    ),
+                    "ts": now,
+                }
+            )
 
         return fired
 

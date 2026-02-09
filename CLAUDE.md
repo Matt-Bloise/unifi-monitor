@@ -5,8 +5,9 @@ Real-time network monitoring dashboard for UniFi networks. Single container, zer
 ## Architecture
 
 Single-process Python app:
-- **FastAPI** serves REST API + static dashboard on port 8080
-- **Poller** hits UniFi API every 30s, writes to SQLite
+- **FastAPI** serves REST API + WebSocket + static dashboard on port 8080
+- **Poller** hits UniFi API every 30s, writes to SQLite, broadcasts via WebSocket
+- **Alert Engine** evaluates rules against each poll snapshot, sends webhook notifications
 - **NetFlow Collector** receives IPFIX/NetFlow UDP on port 2055, batch-writes to SQLite
 - **SQLite** with WAL mode for concurrent reads/writes
 
@@ -16,15 +17,17 @@ All source in `src/unifi_monitor/` -- installable via `pip install -e .`.
 
 | File | Purpose |
 |------|---------|
-| `app.py` | FastAPI app, lifespan (starts poller + netflow + cleanup), DI via `app.state` |
+| `app.py` | FastAPI app, lifespan (starts poller + netflow + cleanup + WS + alerts), DI via `app.state` |
 | `config.py` | All config from env vars with bounds validation |
 | `db.py` | SQLite schema, read/write methods, retention cleanup, `get_db_stats()` |
-| `poller.py` | UniFi API polling loop, data parsing, per-endpoint error isolation |
+| `poller.py` | UniFi API polling loop, data parsing, per-endpoint error isolation, WS broadcast |
 | `unifi_client.py` | UniFi OS API wrapper (session reuse, CSRF, 15s timeouts) |
-| `api/routes.py` | REST endpoints with FastAPI DI, query validation, `/api/health` |
+| `ws.py` | In-memory WebSocket broadcast hub (ConnectionManager) |
+| `alerts.py` | Alert rule evaluation + webhook notification delivery |
+| `api/routes.py` | REST + WebSocket endpoints with FastAPI DI, query validation, `/api/health` |
 | `netflow/parser.py` | IPFIX v10 + NetFlow v5/v9 packet parser |
 | `netflow/collector.py` | Async UDP listener with thread-safe batch writes |
-| `static/` | Dashboard HTML/CSS/JS (Chart.js, vanilla JS) |
+| `static/` | Dashboard HTML/CSS/JS (Chart.js, vanilla JS, WebSocket client) |
 
 ## Design Decisions
 
@@ -36,14 +39,16 @@ All source in `src/unifi_monitor/` -- installable via `pip install -e .`.
 - **FastAPI dependency injection** -- DB passed via `app.state`, not global variable injection.
 - **Weighted health score** -- WAN (40%), devices (30%), alarms (30%) with documented factors.
 - **netflow is optional** -- moved to `[project.optional-dependencies]`, not required for basic monitoring.
+- **WebSocket is in-memory broadcast** -- single-process only, no Redis/pub-sub needed.
+- **Alert engine is generic** -- webhook payload works with Discord, Slack, ntfy, or any HTTP endpoint.
 
 ## Known Limitations
 
 - No authentication on the dashboard (bind to localhost or use a reverse proxy)
-- No WebSocket support (frontend polls every 15s)
 - Single-site only (no multi-site UniFi support)
 - NetFlow parser requires the `netflow` package (`pip install -e ".[netflow]"`)
 - SQLite not suitable for multi-process writes (single-process design)
+- WebSocket broadcast is in-memory (won't scale across multiple worker processes)
 
 ## Common Commands
 

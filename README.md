@@ -23,34 +23,72 @@ Dashboard at **http://localhost:8080**.
 ## Features
 
 - **Live dashboard** -- health score, connected clients, WAN latency, device status, active alarms
+- **WebSocket updates** -- dashboard updates instantly when poller completes (no 15s polling lag)
+- **Per-client drill-down** -- click any client row for 24h signal strength and satisfaction charts
+- **Alert notifications** -- configurable thresholds with webhook delivery (Discord, Slack, ntfy)
 - **NetFlow/IPFIX visualization** -- top talkers, bandwidth over time, port/protocol breakdown
 - **Client monitoring** -- signal strength, satisfaction scores, per-client bandwidth, sortable columns
 - **WAN tracking** -- latency history, status changes, gateway CPU/memory
 - **Device status** -- gateway + AP cards with online/offline badges
-- **Stale data detection** -- yellow/red banners when connection drops
-- **Auto-pause** -- stops polling when browser tab is hidden
+- **Connection resilience** -- auto-reconnect with exponential backoff, REST polling fallback
+- **Auto-pause** -- stops updates when browser tab is hidden
 - **Docker healthcheck** -- `/api/health` endpoint for monitoring
 - **Zero dependencies** -- no Grafana, no InfluxDB, no external database. SQLite + one container.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────┐
-│         unifi-monitor               │
-│                                     │
-│  ┌──────────┐    ┌───────────────┐  │
-│  │  Poller   │──>│   SQLite DB   │  │
-│  │(UniFi API)│    │  (WAL mode)   │  │
-│  └──────────┘    └──────┬────────┘  │
-│                         │           │
-│  ┌──────────┐           │           │
-│  │ NetFlow  │───────────┘           │
-│  │(UDP 2055)│                       │
-│  └──────────┘    ┌──────┴────────┐  │
-│                  │   FastAPI     │  │
-│                  │  REST + Web   │──── :8080
-│                  └───────────────┘  │
-└─────────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│            unifi-monitor                 │
+│                                          │
+│  ┌──────────┐    ┌───────────────┐       │
+│  │  Poller   │──>│   SQLite DB   │       │
+│  │(UniFi API)│    │  (WAL mode)   │       │
+│  └────┬─────┘    └──────┬────────┘       │
+│       │                 │                │
+│       ├─> WS Broadcast  │                │
+│       └─> Alert Engine  │                │
+│                         │                │
+│  ┌──────────┐           │                │
+│  │ NetFlow  │───────────┘                │
+│  │(UDP 2055)│                            │
+│  └──────────┘    ┌──────┴────────┐       │
+│                  │   FastAPI     │       │
+│                  │ REST + WS     │──── :8080
+│                  └───────────────┘       │
+└──────────────────────────────────────────┘
+```
+
+## WebSocket
+
+The dashboard auto-connects via WebSocket at `/api/ws`. When the poller completes a cycle, it broadcasts the latest snapshot to all connected clients instantly.
+
+- **Live mode**: green badge, data arrives as soon as poller finishes
+- **Polling fallback**: if WebSocket fails 3 times, falls back to 15s REST polling (yellow badge)
+- **Auto-reconnect**: exponential backoff (1s -> 2s -> 4s -> ... -> 30s max)
+- **Tab-aware**: pauses WS connection when browser tab is hidden
+
+## Alerts
+
+Set `ALERT_WEBHOOK_URL` to enable alert notifications. Default rules fire on:
+
+- WAN down
+- Health score below 50
+- Device(s) offline
+- WAN latency above 100ms
+
+Per-rule cooldowns prevent notification spam (default 5 minutes).
+
+Webhook payload format (works with Discord webhooks, Slack incoming webhooks, ntfy, httpbin, etc.):
+
+```json
+{
+  "alerts": [
+    {"rule": "wan_latency gt 100", "value": 125.3, "message": "WAN latency 125.3ms", "ts": 1234567890}
+  ],
+  "source": "unifi-monitor",
+  "timestamp": 1234567890
+}
 ```
 
 ## Configuration
@@ -71,6 +109,8 @@ All settings via environment variables (`.env` or `docker-compose.yml`):
 | `POLL_INTERVAL` | `30` | Seconds between API polls (min 5) |
 | `RETENTION_HOURS` | `168` | Data retention in hours (7 days) |
 | `DB_PATH` | `data/monitor.db` | SQLite database path |
+| `ALERT_WEBHOOK_URL` | *(empty)* | Webhook URL for alert notifications |
+| `ALERT_COOLDOWN` | `300` | Seconds between repeated alerts per rule |
 
 ## API Reference
 
@@ -87,6 +127,7 @@ All settings via environment variables (`.env` or `docker-compose.yml`):
 | `GET /api/traffic/top-ports?hours=1&limit=20` | Top ports by bytes |
 | `GET /api/traffic/bandwidth?hours=24&bucket_minutes=5` | Bandwidth timeseries |
 | `GET /api/alarms` | Active (non-archived) alarms |
+| `WS /api/ws` | WebSocket for live dashboard updates |
 
 ## NetFlow Setup
 

@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     log.info("UniFi Monitor stopped")
 
 
-app = FastAPI(title="UniFi Monitor", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="UniFi Monitor", version="0.2.0", lifespan=lifespan)
 
 # Import and include routes (uses dependency injection via app.state)
 from .api.routes import router  # noqa: E402

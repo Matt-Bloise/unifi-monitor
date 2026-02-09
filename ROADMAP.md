@@ -1,11 +1,11 @@
 # Roadmap
 
-## v0.2.0 (Next)
-- [ ] WebSocket live updates (replace polling)
-- [ ] Per-client bandwidth charts
+## v0.2.0 (Current)
+- [x] WebSocket live updates (replace polling)
+- [x] Per-client detail view with signal/satisfaction charts
+- [x] Configurable alert thresholds
+- [x] Webhook notifications (Discord, Slack, ntfy, etc.)
 - [ ] DNS query logging (via NetFlow)
-- [ ] Configurable alert thresholds
-- [ ] Email/webhook notifications
 
 ## v0.3.0
 - [ ] Multi-site support

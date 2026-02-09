@@ -252,12 +252,8 @@ class Poller:
                         round(wan["latency_ms"], 1) if wan and wan.get("latency_ms") else None
                     ),
                     "wan_ip": wan.get("wan_ip") if wan else None,
-                    "cpu_pct": (
-                        round(wan["cpu_pct"], 1) if wan and wan.get("cpu_pct") else None
-                    ),
-                    "mem_pct": (
-                        round(wan["mem_pct"], 1) if wan and wan.get("mem_pct") else None
-                    ),
+                    "cpu_pct": (round(wan["cpu_pct"], 1) if wan and wan.get("cpu_pct") else None),
+                    "mem_pct": (round(wan["mem_pct"], 1) if wan and wan.get("mem_pct") else None),
                 },
                 "devices": {
                     "total": len(devices),

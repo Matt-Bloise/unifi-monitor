@@ -20,9 +20,11 @@ src/unifi_monitor/
   app.py              FastAPI application + background task orchestration
   config.py           Environment variable config with validation
   db.py               SQLite storage (WAL mode, thread-safe, compound indexes)
-  poller.py           Periodic UniFi API polling -> DB writes
+  poller.py           Periodic UniFi API polling -> DB writes + WS broadcast
   unifi_client.py     UniFi OS API wrapper (session reuse, CSRF, timeouts)
-  api/routes.py       REST endpoints with FastAPI dependency injection
+  ws.py               WebSocket broadcast hub (ConnectionManager)
+  alerts.py           Alert rule evaluation + webhook notifications
+  api/routes.py       REST + WebSocket endpoints with FastAPI dependency injection
   netflow/parser.py   IPFIX/NetFlow v5/v9 packet parser
   netflow/collector.py  Async UDP listener with thread-safe batch writes
   static/             Dashboard HTML/CSS/JS
@@ -32,10 +34,11 @@ src/unifi_monitor/
 
 Single-process, no external dependencies beyond the UniFi gateway:
 
-1. **Poller** -- polls UniFi API every 30s, writes to SQLite
-2. **NetFlow Collector** -- receives IPFIX/NetFlow UDP on port 2055, batch-writes to SQLite
-3. **FastAPI** -- serves REST API + static dashboard, DI via `app.state`
-4. **SQLite** -- WAL mode for concurrent reads/writes, hourly retention cleanup
+1. **Poller** -- polls UniFi API every 30s, writes to SQLite, broadcasts snapshot via WebSocket
+2. **Alert Engine** -- evaluates rules against each snapshot, sends webhook notifications
+3. **NetFlow Collector** -- receives IPFIX/NetFlow UDP on port 2055, batch-writes to SQLite
+4. **FastAPI** -- serves REST API + WebSocket + static dashboard, DI via `app.state`
+5. **SQLite** -- WAL mode for concurrent reads/writes, hourly retention cleanup
 
 ## Running Tests
 
@@ -43,7 +46,7 @@ Single-process, no external dependencies beyond the UniFi gateway:
 python -m pytest tests/ -v
 ```
 
-Tests cover: database CRUD, API endpoints, data parsing, query validation, health score calculation.
+Tests cover: database CRUD, API endpoints, data parsing, query validation, health score calculation, WebSocket broadcast, alert evaluation.
 
 ## Linting and Formatting
 
@@ -77,7 +80,43 @@ Ruff config is in `pyproject.toml`. Target: Python 3.10+, 100-char line length.
 1. Add the HTML structure in `static/index.html`
 2. Add the render function in `static/js/dashboard.js`
 3. Wire it into the `refresh()` function's `Promise.all`
-4. Add any needed API endpoint (see above)
+4. If the panel should update via WebSocket, also wire it into the `wsConn.onmessage` handler
+5. Add any needed API endpoint (see above)
+
+## Adding an Alert Rule
+
+Alert rules are defined in `src/unifi_monitor/alerts.py`.
+
+1. If the metric already exists (see `_extract_metric()`), add a new `AlertRule` to `DEFAULT_RULES`:
+
+```python
+AlertRule("wan_latency", "gt", 200, "WAN latency critical: {value}ms", 600),
+```
+
+2. If you need a new metric, add extraction logic to `_extract_metric()`:
+
+```python
+if metric == "client_count":
+    return overview.get("clients", {}).get("total", 0)
+```
+
+3. Available operators: `gt`, `lt`, `eq`, `ne`
+
+4. The `message` template supports `{value}`, `{metric}`, and `{threshold}` placeholders.
+
+5. `cooldown_s` sets the minimum seconds between repeated alerts for the same rule.
+
+6. Add tests in `tests/test_alerts.py`:
+
+```python
+def test_my_new_rule(self) -> None:
+    engine = AlertEngine(
+        rules=[AlertRule("client_count", "gt", 20, "{value} clients", 0)],
+    )
+    snap = _make_snapshot(...)
+    fired = engine.evaluate(snap)
+    assert len(fired) == 1
+```
 
 ## UniFi API Notes
 
