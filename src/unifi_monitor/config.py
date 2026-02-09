@@ -1,7 +1,17 @@
 # config.py -- All configuration from environment variables
-# No config files to manage. docker-compose.yml sets env vars.
+# Loads .env file if present, then reads os.environ.
+# Docker sets env vars directly; local dev uses .env file.
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Walk up from config.py to find .env (supports both src layout and installed)
+_project_root = Path(__file__).resolve().parent.parent.parent
+load_dotenv(_project_root / ".env")
+# Also try cwd (Docker WORKDIR or wherever the user runs from)
+load_dotenv(override=False)
 
 
 class Config:
