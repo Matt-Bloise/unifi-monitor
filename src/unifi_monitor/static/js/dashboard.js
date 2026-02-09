@@ -513,6 +513,30 @@ function renderTopPorts(ports) {
     }).join('');
 }
 
+function renderDnsClients(data) {
+    if (!data) return;
+    var tbody = document.getElementById('dns-clients-body');
+    tbody.innerHTML = data.slice(0, 10).map(function(d) {
+        return '<tr>' +
+            '<td>' + escapeHtml(d.src_ip) + '</td>' +
+            '<td>' + (d.query_count || 0) + '</td>' +
+            '<td>' + (d.total_bytes_fmt || fmtBytes(d.total_bytes)) + '</td>' +
+        '</tr>';
+    }).join('');
+}
+
+function renderDnsServers(data) {
+    if (!data) return;
+    var tbody = document.getElementById('dns-servers-body');
+    tbody.innerHTML = data.slice(0, 10).map(function(d) {
+        return '<tr>' +
+            '<td>' + escapeHtml(d.dst_ip) + '</td>' +
+            '<td>' + (d.query_count || 0) + '</td>' +
+            '<td>' + (d.total_bytes_fmt || fmtBytes(d.total_bytes)) + '</td>' +
+        '</tr>';
+    }).join('');
+}
+
 function renderBandwidthChart(data) {
     if (!data || !data.length) return;
 
@@ -665,6 +689,8 @@ async function refresh() {
         fetchJSON('/api/wan/history?hours=24'),
         fetchJSON('/api/devices'),
         fetchJSON('/api/alarms'),
+        fetchJSON('/api/traffic/dns-top-clients?hours=1&limit=10'),
+        fetchJSON('/api/traffic/dns-top-servers?hours=1&limit=10'),
     ]);
 
     var anySuccess = results.some(function(r) { return r !== null; });
@@ -680,6 +706,8 @@ async function refresh() {
     renderLatencyChart(results[5]);
     renderDevices(results[6]);
     renderAlarms(results[7]);
+    renderDnsClients(results[8]);
+    renderDnsServers(results[9]);
 
     updateStatusBanner();
 }

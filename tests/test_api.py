@@ -139,6 +139,30 @@ class TestTraffic:
         assert "mbps" in data[0]
 
 
+class TestDnsTraffic:
+    def test_dns_top_clients(self, test_client: TestClient):
+        resp = test_client.get("/api/traffic/dns-top-clients?hours=1&limit=10")
+        assert resp.status_code == 200
+        data = resp.json()
+        # populated_db has a flow from 192.168.1.50 to 1.1.1.1 on port 53
+        assert len(data) >= 1
+        assert "total_bytes_fmt" in data[0]
+        assert data[0]["src_ip"] == "192.168.1.50"
+
+    def test_dns_top_servers(self, test_client: TestClient):
+        resp = test_client.get("/api/traffic/dns-top-servers?hours=1&limit=10")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) >= 1
+        assert data[0]["dst_ip"] == "1.1.1.1"
+
+    def test_dns_queries(self, test_client: TestClient):
+        resp = test_client.get("/api/traffic/dns-queries?hours=1&limit=10")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) >= 1
+
+
 class TestAlarms:
     def test_alarms_returns_active(self, test_client: TestClient):
         resp = test_client.get("/api/alarms")

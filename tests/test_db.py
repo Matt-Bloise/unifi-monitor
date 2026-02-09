@@ -272,6 +272,96 @@ class TestDatabase:
         history = self.db.get_client_history("aa:bb:cc:dd:ee:ff", hours=1)
         assert len(history) == 2
 
+
+class TestDns:
+    def setup_method(self, method):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self.db = Database(Path(self._tmpdir) / "test.db")
+
+    def _insert_dns_flows(self):
+        ts = time.time()
+        flows = [
+            {
+                "src_ip": "192.168.1.50",
+                "dst_ip": "1.1.1.1",
+                "src_port": 54322,
+                "dst_port": 53,
+                "protocol": 17,
+                "bytes": 1000,
+                "packets": 5,
+            },
+            {
+                "src_ip": "192.168.1.50",
+                "dst_ip": "8.8.8.8",
+                "src_port": 54323,
+                "dst_port": 53,
+                "protocol": 17,
+                "bytes": 2000,
+                "packets": 10,
+            },
+            {
+                "src_ip": "192.168.1.10",
+                "dst_ip": "1.1.1.1",
+                "src_port": 54324,
+                "dst_port": 853,
+                "protocol": 6,
+                "bytes": 500,
+                "packets": 3,
+            },
+            {
+                "src_ip": "192.168.1.10",
+                "dst_ip": "8.8.8.8",
+                "src_port": 54325,
+                "dst_port": 443,
+                "protocol": 6,
+                "bytes": 50000,
+                "packets": 30,
+            },
+        ]
+        self.db.insert_netflow_batch(ts, flows)
+        return ts
+
+    def test_dns_queries(self):
+        self._insert_dns_flows()
+        rows = self.db.get_dns_queries(hours=1, limit=100)
+        # 3 DNS flows -> 3 unique src_ip/dst_ip pairs
+        assert len(rows) == 3
+        # Top by query_count -- all have count 1, so order by count desc
+        assert all(r["query_count"] >= 1 for r in rows)
+
+    def test_dns_top_clients(self):
+        self._insert_dns_flows()
+        rows = self.db.get_dns_top_clients(hours=1, limit=20)
+        assert len(rows) == 2
+        # 192.168.1.50 has 2 DNS flows, 192.168.1.10 has 1
+        assert rows[0]["src_ip"] == "192.168.1.50"
+        assert rows[0]["query_count"] == 2
+
+    def test_dns_top_servers(self):
+        self._insert_dns_flows()
+        rows = self.db.get_dns_top_servers(hours=1, limit=20)
+        assert len(rows) == 2
+        # 1.1.1.1 has 2 DNS flows, 8.8.8.8 has 1
+        assert rows[0]["dst_ip"] == "1.1.1.1"
+        assert rows[0]["query_count"] == 2
+
+    def test_dns_empty_db(self):
+        assert self.db.get_dns_queries() == []
+        assert self.db.get_dns_top_clients() == []
+        assert self.db.get_dns_top_servers() == []
+
+
+class TestEmptyDefaults:
+    """Extracted from TestDatabase for clarity."""
+
+    def setup_method(self, method):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self.db = Database(Path(self._tmpdir) / "test.db")
+
     def test_empty_db_returns_sensible_defaults(self):
         assert self.db.get_latest_wan() is None
         assert self.db.get_latest_devices() == []

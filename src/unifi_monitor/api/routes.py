@@ -254,6 +254,54 @@ def top_ports(
     return rows
 
 
+@router.get("/traffic/dns-queries")
+def dns_queries(
+    db: Database = Depends(get_db),
+    hours: float = Query(1, ge=0.1, le=8760),
+    limit: int = Query(100, ge=1, le=1000),
+) -> list[dict]:
+    """DNS query aggregates: per-client-per-server."""
+    try:
+        rows = db.get_dns_queries(hours, limit)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    for r in rows:
+        r["total_bytes_fmt"] = _fmt_bytes(r.get("total_bytes"))
+    return rows
+
+
+@router.get("/traffic/dns-top-clients")
+def dns_top_clients(
+    db: Database = Depends(get_db),
+    hours: float = Query(1, ge=0.1, le=8760),
+    limit: int = Query(20, ge=1, le=1000),
+) -> list[dict]:
+    """Top DNS-querying clients by flow count."""
+    try:
+        rows = db.get_dns_top_clients(hours, limit)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    for r in rows:
+        r["total_bytes_fmt"] = _fmt_bytes(r.get("total_bytes"))
+    return rows
+
+
+@router.get("/traffic/dns-top-servers")
+def dns_top_servers(
+    db: Database = Depends(get_db),
+    hours: float = Query(1, ge=0.1, le=8760),
+    limit: int = Query(20, ge=1, le=1000),
+) -> list[dict]:
+    """Top DNS servers by flow count."""
+    try:
+        rows = db.get_dns_top_servers(hours, limit)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    for r in rows:
+        r["total_bytes_fmt"] = _fmt_bytes(r.get("total_bytes"))
+    return rows
+
+
 @router.get("/traffic/bandwidth")
 def bandwidth_timeseries(
     db: Database = Depends(get_db),

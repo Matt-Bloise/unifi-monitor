@@ -279,6 +279,36 @@ class Database:
             (cutoff, limit),
         ).fetchall()
 
+    def get_dns_queries(self, hours: float = 1, limit: int = 100) -> list[dict]:
+        cutoff = time.time() - (hours * 3600)
+        return self._conn.execute(
+            """SELECT src_ip, dst_ip, SUM(bytes) as total_bytes, SUM(packets) as total_packets,
+                      COUNT(*) as query_count
+               FROM netflow WHERE ts > ? AND dst_port IN (53, 853) AND protocol IN (6, 17)
+               GROUP BY src_ip, dst_ip ORDER BY query_count DESC LIMIT ?""",
+            (cutoff, limit),
+        ).fetchall()
+
+    def get_dns_top_clients(self, hours: float = 1, limit: int = 20) -> list[dict]:
+        cutoff = time.time() - (hours * 3600)
+        return self._conn.execute(
+            """SELECT src_ip, SUM(bytes) as total_bytes, SUM(packets) as total_packets,
+                      COUNT(*) as query_count
+               FROM netflow WHERE ts > ? AND dst_port IN (53, 853) AND protocol IN (6, 17)
+               GROUP BY src_ip ORDER BY query_count DESC LIMIT ?""",
+            (cutoff, limit),
+        ).fetchall()
+
+    def get_dns_top_servers(self, hours: float = 1, limit: int = 20) -> list[dict]:
+        cutoff = time.time() - (hours * 3600)
+        return self._conn.execute(
+            """SELECT dst_ip, SUM(bytes) as total_bytes, SUM(packets) as total_packets,
+                      COUNT(*) as query_count
+               FROM netflow WHERE ts > ? AND dst_port IN (53, 853) AND protocol IN (6, 17)
+               GROUP BY dst_ip ORDER BY query_count DESC LIMIT ?""",
+            (cutoff, limit),
+        ).fetchall()
+
     def get_bandwidth_timeseries(self, hours: float = 24, bucket_minutes: int = 5) -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         bucket_secs = bucket_minutes * 60
