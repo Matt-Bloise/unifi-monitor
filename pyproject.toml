@@ -21,12 +21,6 @@ classifiers = [
     "Topic :: System :: Monitoring",
     "Topic :: System :: Networking :: Monitoring",
 ]
-
-[project.urls]
-Homepage = "https://github.com/Matt-Bloise/unifi-monitor"
-Repository = "https://github.com/Matt-Bloise/unifi-monitor"
-Issues = "https://github.com/Matt-Bloise/unifi-monitor/issues"
-Changelog = "https://github.com/Matt-Bloise/unifi-monitor/blob/master/CHANGELOG.md"
 dependencies = [
     "fastapi>=0.104",
     "uvicorn[standard]>=0.24",
@@ -35,6 +29,12 @@ dependencies = [
     "python-dotenv>=1.0",
     "httpx>=0.25",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Matt-Bloise/unifi-monitor"
+Repository = "https://github.com/Matt-Bloise/unifi-monitor"
+Issues = "https://github.com/Matt-Bloise/unifi-monitor/issues"
+Changelog = "https://github.com/Matt-Bloise/unifi-monitor/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [
