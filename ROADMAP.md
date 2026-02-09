@@ -5,18 +5,27 @@
 - [x] Per-client detail view with signal/satisfaction charts
 - [x] Configurable alert thresholds
 - [x] Webhook notifications (Discord, Slack, ntfy, etc.)
-- [ ] DNS query logging (via NetFlow)
 
 ## v0.3.0
-- [ ] Multi-site support
 - [ ] User authentication (basic auth or API key)
+- [ ] DNS query logging (via NetFlow)
+- [ ] Multi-site support
 - [ ] Data export (CSV/JSON)
-- [ ] Grafana-compatible metrics endpoint (/metrics)
 - [ ] Historical comparison (today vs last week)
+- [ ] Dark mode
+
+## v0.4.0
+- [ ] Grafana-compatible /metrics endpoint (Prometheus)
+- [ ] Custom dashboard layouts
+- [ ] Mobile-responsive PWA
+- [ ] Anomaly detection (baseline learning + deviation alerts)
 
 ## Ideas
-- Prometheus exporter
 - InfluxDB/TimescaleDB backend option
-- Mobile-responsive PWA
 - Plugin system for custom collectors
-- Anomaly detection (baseline + deviation alerts)
+- Shared UniFi client library (with UnifiAgent)
+- PersonalAI Discord bot integration (alert routing)
+- SNMP polling as alternative to API
+- Per-SSID / per-VLAN bandwidth breakdown
+- Client roaming timeline visualization
+- Firmware update tracking / changelog alerts
