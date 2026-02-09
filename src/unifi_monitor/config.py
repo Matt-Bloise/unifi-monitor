@@ -45,6 +45,9 @@ class Config:
     unifi_username: str = os.getenv("UNIFI_USERNAME", "admin")
     unifi_password: str = os.getenv("UNIFI_PASSWORD", "")
     unifi_site: str = os.getenv("UNIFI_SITE", "default")
+    unifi_sites: list[str] = [
+        s.strip() for s in os.getenv("UNIFI_SITES", "").split(",") if s.strip()
+    ] or [os.getenv("UNIFI_SITE", "default")]
     unifi_port: int = _safe_int("UNIFI_PORT", 443, min_val=1, max_val=65535)
 
     # Web server

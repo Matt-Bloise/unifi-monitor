@@ -72,6 +72,35 @@ const STALE_THRESHOLD_MS = 60000;
 const WS_MAX_BACKOFF_MS = 30000;
 let bandwidthChart = null;
 let latencyChart = null;
+let currentSite = 'default';
+
+function siteParam(url) {
+    var sep = url.indexOf('?') >= 0 ? '&' : '?';
+    return url + sep + 'site=' + encodeURIComponent(currentSite);
+}
+
+async function initSiteSelector() {
+    try {
+        var resp = await fetch('/api/sites');
+        if (!resp.ok) return;
+        var data = await resp.json();
+        var sites = data.sites || [];
+        currentSite = data.default || sites[0] || 'default';
+        if (sites.length > 1) {
+            var sel = document.getElementById('site-select');
+            sel.innerHTML = sites.map(function(s) {
+                return '<option value="' + s + '"' + (s === currentSite ? ' selected' : '') + '>' + s + '</option>';
+            }).join('');
+            sel.classList.remove('hidden');
+            sel.addEventListener('change', function() {
+                currentSite = sel.value;
+                refresh();
+            });
+        }
+    } catch (e) {
+        // Single site fallback
+    }
+}
 let lastSuccessfulFetch = 0;
 let refreshTimer = null;
 let currentClients = [];
@@ -420,7 +449,7 @@ function renderClientTable(clients) {
 // -- Client detail charts --
 
 async function loadClientCharts(mac) {
-    var data = await fetchJSON('/api/clients/' + encodeURIComponent(mac) + '/history?hours=24');
+    var data = await fetchJSON(siteParam('/api/clients/' + encodeURIComponent(mac) + '/history?hours=24'));
     if (!data || !data.length) return;
 
     var labels = data.map(function(d) {
@@ -681,16 +710,16 @@ document.addEventListener('click', function(e) {
 
 async function refresh() {
     var results = await Promise.all([
-        fetchJSON('/api/overview'),
-        fetchJSON('/api/clients?limit=200'),
-        fetchJSON('/api/traffic/top-talkers?hours=1&limit=10'),
-        fetchJSON('/api/traffic/top-ports?hours=1&limit=10'),
-        fetchJSON('/api/traffic/bandwidth?hours=24&bucket_minutes=5'),
-        fetchJSON('/api/wan/history?hours=24'),
-        fetchJSON('/api/devices'),
-        fetchJSON('/api/alarms'),
-        fetchJSON('/api/traffic/dns-top-clients?hours=1&limit=10'),
-        fetchJSON('/api/traffic/dns-top-servers?hours=1&limit=10'),
+        fetchJSON(siteParam('/api/overview')),
+        fetchJSON(siteParam('/api/clients?limit=200')),
+        fetchJSON(siteParam('/api/traffic/top-talkers?hours=1&limit=10')),
+        fetchJSON(siteParam('/api/traffic/top-ports?hours=1&limit=10')),
+        fetchJSON(siteParam('/api/traffic/bandwidth?hours=24&bucket_minutes=5')),
+        fetchJSON(siteParam('/api/wan/history?hours=24')),
+        fetchJSON(siteParam('/api/devices')),
+        fetchJSON(siteParam('/api/alarms')),
+        fetchJSON(siteParam('/api/traffic/dns-top-clients?hours=1&limit=10')),
+        fetchJSON(siteParam('/api/traffic/dns-top-servers?hours=1&limit=10')),
     ]);
 
     var anySuccess = results.some(function(r) { return r !== null; });
@@ -757,8 +786,10 @@ document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
 // Periodic stale check (even when paused, update the banner)
 setInterval(updateStatusBanner, 10000);
 
-// Initial load: fetch WS token, then start WS + REST fetch for chart data
-fetchWsToken().then(function() {
+// Initial load: init site selector, fetch WS token, then start WS + REST fetch
+initSiteSelector().then(function() {
+    return fetchWsToken();
+}).then(function() {
     wsConnect();
     refresh();
 });

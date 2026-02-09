@@ -66,6 +66,7 @@ class TestExportWan:
 
         app.state.db = tmp_db
         app.state.start_time = time.time()
+        app.state.sites = ["default"]
         client = TestClient(app)
         resp = client.get("/api/export/wan?format=csv")
         assert resp.status_code == 200

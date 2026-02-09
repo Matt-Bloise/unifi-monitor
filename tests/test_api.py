@@ -46,6 +46,7 @@ class TestOverview:
     def test_overview_with_empty_db(self, tmp_db: Database):
         app.state.db = tmp_db
         app.state.start_time = time.time()
+        app.state.sites = ["default"]
         client = TestClient(app)
         resp = client.get("/api/overview")
         assert resp.status_code == 200
@@ -139,6 +140,30 @@ class TestTraffic:
         assert "mbps" in data[0]
 
 
+class TestSites:
+    def test_sites_endpoint(self, test_client: TestClient):
+        resp = test_client.get("/api/sites")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "sites" in data
+        assert "default" in data
+        assert data["sites"] == ["default"]
+        assert data["default"] == "default"
+
+    def test_overview_with_site_param(self, test_client: TestClient):
+        resp = test_client.get("/api/overview?site=default")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "health_score" in data
+
+    def test_unknown_site_falls_back(self, test_client: TestClient):
+        resp = test_client.get("/api/overview?site=nonexistent")
+        assert resp.status_code == 200
+        data = resp.json()
+        # Falls back to default site -- should still return valid data
+        assert "health_score" in data
+
+
 class TestDnsTraffic:
     def test_dns_top_clients(self, test_client: TestClient):
         resp = test_client.get("/api/traffic/dns-top-clients?hours=1&limit=10")
@@ -192,6 +217,7 @@ class TestHealthScoreCalculation:
         )
         app.state.db = tmp_db
         app.state.start_time = time.time()
+        app.state.sites = ["default"]
         client = TestClient(app)
         resp = client.get("/api/overview")
         data = resp.json()
@@ -211,6 +237,7 @@ class TestHealthScoreCalculation:
         )
         app.state.db = tmp_db
         app.state.start_time = time.time()
+        app.state.sites = ["default"]
         client = TestClient(app)
         resp = client.get("/api/overview")
         data = resp.json()

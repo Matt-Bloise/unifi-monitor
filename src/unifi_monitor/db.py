@@ -51,7 +51,8 @@ class Database:
                 upload_bps REAL,
                 wan_ip TEXT,
                 cpu_pct REAL,
-                mem_pct REAL
+                mem_pct REAL,
+                site TEXT NOT NULL DEFAULT 'default'
             );
             CREATE INDEX IF NOT EXISTS idx_wan_ts ON wan_metrics(ts);
 
@@ -67,7 +68,8 @@ class Database:
                 num_clients INTEGER,
                 satisfaction INTEGER,
                 tx_bytes_r REAL,
-                rx_bytes_r REAL
+                rx_bytes_r REAL,
+                site TEXT NOT NULL DEFAULT 'default'
             );
             CREATE INDEX IF NOT EXISTS idx_dev_ts ON devices(ts);
             CREATE INDEX IF NOT EXISTS idx_dev_mac_ts ON devices(mac, ts);
@@ -86,7 +88,8 @@ class Database:
                 tx_bytes REAL,
                 rx_bytes REAL,
                 tx_rate REAL,
-                rx_rate REAL
+                rx_rate REAL,
+                site TEXT NOT NULL DEFAULT 'default'
             );
             CREATE INDEX IF NOT EXISTS idx_cli_ts ON clients(ts);
             CREATE INDEX IF NOT EXISTS idx_cli_mac_ts ON clients(mac, ts);
@@ -99,7 +102,8 @@ class Database:
                 dst_port INTEGER,
                 protocol INTEGER,
                 bytes INTEGER,
-                packets INTEGER
+                packets INTEGER,
+                site TEXT NOT NULL DEFAULT 'default'
             );
             CREATE INDEX IF NOT EXISTS idx_nf_ts ON netflow(ts);
 
@@ -109,9 +113,26 @@ class Database:
                 type TEXT,
                 message TEXT,
                 device_name TEXT,
-                archived INTEGER
+                archived INTEGER,
+                site TEXT NOT NULL DEFAULT 'default'
             );
             CREATE INDEX IF NOT EXISTS idx_alarm_ts ON alarms(ts);
+        """)
+
+        # Migrate existing DBs: add site column if missing
+        for table in _VALID_TABLES:
+            cols = [r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()]
+            if "site" not in cols:
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN site TEXT NOT NULL DEFAULT 'default'"
+                )
+
+        conn.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_wan_site_ts ON wan_metrics(site, ts);
+            CREATE INDEX IF NOT EXISTS idx_dev_site_ts ON devices(site, ts);
+            CREATE INDEX IF NOT EXISTS idx_cli_site_ts ON clients(site, ts);
+            CREATE INDEX IF NOT EXISTS idx_nf_site_ts ON netflow(site, ts);
+            CREATE INDEX IF NOT EXISTS idx_alarm_site_ts ON alarms(site, ts);
         """)
         conn.commit()
 
@@ -127,15 +148,16 @@ class Database:
         mem_pct: float | None,
         download_bps: float | None = None,
         upload_bps: float | None = None,
+        site: str = "default",
     ) -> None:
         with self._conn:
             self._conn.execute(
-                "INSERT INTO wan_metrics VALUES (?,?,?,?,?,?,?,?)",
-                (ts, status, latency_ms, download_bps, upload_bps, wan_ip, cpu_pct, mem_pct),
+                "INSERT INTO wan_metrics VALUES (?,?,?,?,?,?,?,?,?)",
+                (ts, status, latency_ms, download_bps, upload_bps, wan_ip, cpu_pct, mem_pct, site),
             )
         self._last_write_ts = ts
 
-    def insert_devices(self, ts: float, devices: list[dict]) -> None:
+    def insert_devices(self, ts: float, devices: list[dict], site: str = "default") -> None:
         rows = [
             (
                 ts,
@@ -150,14 +172,17 @@ class Database:
                 d.get("satisfaction"),
                 d.get("tx_bytes_r"),
                 d.get("rx_bytes_r"),
+                site,
             )
             for d in devices
         ]
         with self._conn:
-            self._conn.executemany("INSERT INTO devices VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+            self._conn.executemany(
+                "INSERT INTO devices VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows
+            )
         self._last_write_ts = ts
 
-    def insert_clients(self, ts: float, clients: list[dict]) -> None:
+    def insert_clients(self, ts: float, clients: list[dict], site: str = "default") -> None:
         rows = [
             (
                 ts,
@@ -174,14 +199,19 @@ class Database:
                 c.get("rx_bytes"),
                 c.get("tx_rate"),
                 c.get("rx_rate"),
+                site,
             )
             for c in clients
         ]
         with self._conn:
-            self._conn.executemany("INSERT INTO clients VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+            self._conn.executemany(
+                "INSERT INTO clients VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows
+            )
         self._last_write_ts = ts
 
-    def insert_netflow_batch(self, ts: float, flows: list[dict]) -> None:
+    def insert_netflow_batch(
+        self, ts: float, flows: list[dict], site: str = "default"
+    ) -> None:
         rows = [
             (
                 ts,
@@ -192,14 +222,15 @@ class Database:
                 f["protocol"],
                 f["bytes"],
                 f["packets"],
+                site,
             )
             for f in flows
         ]
         with self._conn:
-            self._conn.executemany("INSERT INTO netflow VALUES (?,?,?,?,?,?,?,?)", rows)
+            self._conn.executemany("INSERT INTO netflow VALUES (?,?,?,?,?,?,?,?,?)", rows)
         self._last_write_ts = ts
 
-    def insert_alarms(self, ts: float, alarms: list[dict]) -> None:
+    def insert_alarms(self, ts: float, alarms: list[dict], site: str = "default") -> None:
         rows = [
             (
                 ts,
@@ -208,138 +239,171 @@ class Database:
                 a.get("message"),
                 a.get("device_name"),
                 int(a.get("archived", False)),
+                site,
             )
             for a in alarms
         ]
         with self._conn:
-            self._conn.executemany("INSERT INTO alarms VALUES (?,?,?,?,?,?)", rows)
+            self._conn.executemany("INSERT INTO alarms VALUES (?,?,?,?,?,?,?)", rows)
         self._last_write_ts = ts
 
     # -- Read methods --
 
-    def get_wan_history(self, hours: float = 24) -> list[dict]:
+    def get_wan_history(self, hours: float = 24, site: str = "default") -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         return self._conn.execute(
-            "SELECT * FROM wan_metrics WHERE ts > ? ORDER BY ts", (cutoff,)
+            "SELECT * FROM wan_metrics WHERE ts > ? AND site = ? ORDER BY ts",
+            (cutoff, site),
         ).fetchall()
 
-    def get_latest_wan(self) -> dict | None:
-        row = self._conn.execute("SELECT * FROM wan_metrics ORDER BY ts DESC LIMIT 1").fetchone()
-        return row
+    def get_latest_wan(self, site: str = "default") -> dict | None:
+        return self._conn.execute(
+            "SELECT * FROM wan_metrics WHERE site = ? ORDER BY ts DESC LIMIT 1", (site,)
+        ).fetchone()
 
-    def get_latest_devices(self) -> list[dict]:
-        latest_ts = self._conn.execute("SELECT MAX(ts) as ts FROM devices").fetchone()
+    def get_latest_devices(self, site: str = "default") -> list[dict]:
+        latest_ts = self._conn.execute(
+            "SELECT MAX(ts) as ts FROM devices WHERE site = ?", (site,)
+        ).fetchone()
         if not latest_ts or not latest_ts["ts"]:
             return []
         return self._conn.execute(
-            "SELECT * FROM devices WHERE ts = ?", (latest_ts["ts"],)
+            "SELECT * FROM devices WHERE ts = ? AND site = ?", (latest_ts["ts"], site)
         ).fetchall()
 
-    def get_latest_clients(self) -> list[dict]:
-        latest_ts = self._conn.execute("SELECT MAX(ts) as ts FROM clients").fetchone()
+    def get_latest_clients(self, site: str = "default") -> list[dict]:
+        latest_ts = self._conn.execute(
+            "SELECT MAX(ts) as ts FROM clients WHERE site = ?", (site,)
+        ).fetchone()
         if not latest_ts or not latest_ts["ts"]:
             return []
         return self._conn.execute(
-            "SELECT * FROM clients WHERE ts = ?", (latest_ts["ts"],)
+            "SELECT * FROM clients WHERE ts = ? AND site = ?", (latest_ts["ts"], site)
         ).fetchall()
 
-    def get_client_history(self, mac: str, hours: float = 24) -> list[dict]:
+    def get_client_history(
+        self, mac: str, hours: float = 24, site: str = "default"
+    ) -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         return self._conn.execute(
-            "SELECT * FROM clients WHERE mac = ? AND ts > ? ORDER BY ts",
-            (mac, cutoff),
+            "SELECT * FROM clients WHERE mac = ? AND ts > ? AND site = ? ORDER BY ts",
+            (mac, cutoff, site),
         ).fetchall()
 
-    def get_top_talkers(self, hours: float = 1, limit: int = 20) -> list[dict]:
+    def get_top_talkers(
+        self, hours: float = 1, limit: int = 20, site: str = "default"
+    ) -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         return self._conn.execute(
             """SELECT src_ip, SUM(bytes) as total_bytes, SUM(packets) as total_packets,
                       COUNT(*) as flow_count
-               FROM netflow WHERE ts > ?
+               FROM netflow WHERE ts > ? AND site = ?
                GROUP BY src_ip ORDER BY total_bytes DESC LIMIT ?""",
-            (cutoff, limit),
+            (cutoff, site, limit),
         ).fetchall()
 
-    def get_top_destinations(self, hours: float = 1, limit: int = 20) -> list[dict]:
+    def get_top_destinations(
+        self, hours: float = 1, limit: int = 20, site: str = "default"
+    ) -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         return self._conn.execute(
             """SELECT dst_ip, SUM(bytes) as total_bytes, SUM(packets) as total_packets,
                       COUNT(*) as flow_count
-               FROM netflow WHERE ts > ?
+               FROM netflow WHERE ts > ? AND site = ?
                GROUP BY dst_ip ORDER BY total_bytes DESC LIMIT ?""",
-            (cutoff, limit),
+            (cutoff, site, limit),
         ).fetchall()
 
-    def get_top_ports(self, hours: float = 1, limit: int = 20) -> list[dict]:
+    def get_top_ports(
+        self, hours: float = 1, limit: int = 20, site: str = "default"
+    ) -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         return self._conn.execute(
             """SELECT dst_port, protocol, SUM(bytes) as total_bytes, COUNT(*) as flow_count
-               FROM netflow WHERE ts > ?
+               FROM netflow WHERE ts > ? AND site = ?
                GROUP BY dst_port, protocol ORDER BY total_bytes DESC LIMIT ?""",
-            (cutoff, limit),
+            (cutoff, site, limit),
         ).fetchall()
 
-    def get_dns_queries(self, hours: float = 1, limit: int = 100) -> list[dict]:
+    def get_dns_queries(
+        self, hours: float = 1, limit: int = 100, site: str = "default"
+    ) -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         return self._conn.execute(
             """SELECT src_ip, dst_ip, SUM(bytes) as total_bytes, SUM(packets) as total_packets,
                       COUNT(*) as query_count
                FROM netflow WHERE ts > ? AND dst_port IN (53, 853) AND protocol IN (6, 17)
+                   AND site = ?
                GROUP BY src_ip, dst_ip ORDER BY query_count DESC LIMIT ?""",
-            (cutoff, limit),
+            (cutoff, site, limit),
         ).fetchall()
 
-    def get_dns_top_clients(self, hours: float = 1, limit: int = 20) -> list[dict]:
+    def get_dns_top_clients(
+        self, hours: float = 1, limit: int = 20, site: str = "default"
+    ) -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         return self._conn.execute(
             """SELECT src_ip, SUM(bytes) as total_bytes, SUM(packets) as total_packets,
                       COUNT(*) as query_count
                FROM netflow WHERE ts > ? AND dst_port IN (53, 853) AND protocol IN (6, 17)
+                   AND site = ?
                GROUP BY src_ip ORDER BY query_count DESC LIMIT ?""",
-            (cutoff, limit),
+            (cutoff, site, limit),
         ).fetchall()
 
-    def get_dns_top_servers(self, hours: float = 1, limit: int = 20) -> list[dict]:
+    def get_dns_top_servers(
+        self, hours: float = 1, limit: int = 20, site: str = "default"
+    ) -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         return self._conn.execute(
             """SELECT dst_ip, SUM(bytes) as total_bytes, SUM(packets) as total_packets,
                       COUNT(*) as query_count
                FROM netflow WHERE ts > ? AND dst_port IN (53, 853) AND protocol IN (6, 17)
+                   AND site = ?
                GROUP BY dst_ip ORDER BY query_count DESC LIMIT ?""",
-            (cutoff, limit),
+            (cutoff, site, limit),
         ).fetchall()
 
-    def get_bandwidth_timeseries(self, hours: float = 24, bucket_minutes: int = 5) -> list[dict]:
+    def get_bandwidth_timeseries(
+        self, hours: float = 24, bucket_minutes: int = 5, site: str = "default"
+    ) -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         bucket_secs = bucket_minutes * 60
         return self._conn.execute(
             "SELECT CAST(ts / ? AS INTEGER) * ? as bucket,"
             "       SUM(bytes) as total_bytes, SUM(packets) as total_packets"
-            " FROM netflow WHERE ts > ?"
+            " FROM netflow WHERE ts > ? AND site = ?"
             " GROUP BY bucket ORDER BY bucket",
-            (bucket_secs, bucket_secs, cutoff),
+            (bucket_secs, bucket_secs, cutoff, site),
         ).fetchall()
 
-    def get_active_alarms(self) -> list[dict]:
-        latest_ts = self._conn.execute("SELECT MAX(ts) as ts FROM alarms").fetchone()
+    def get_active_alarms(self, site: str = "default") -> list[dict]:
+        latest_ts = self._conn.execute(
+            "SELECT MAX(ts) as ts FROM alarms WHERE site = ?", (site,)
+        ).fetchone()
         if not latest_ts or not latest_ts["ts"]:
             return []
         return self._conn.execute(
-            "SELECT * FROM alarms WHERE ts = ? AND archived = 0", (latest_ts["ts"],)
+            "SELECT * FROM alarms WHERE ts = ? AND archived = 0 AND site = ?",
+            (latest_ts["ts"], site),
         ).fetchall()
 
-    def get_clients_export(self, hours: float = 24, limit: int = 10000) -> list[dict]:
+    def get_clients_export(
+        self, hours: float = 24, limit: int = 10000, site: str = "default"
+    ) -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         return self._conn.execute(
-            "SELECT * FROM clients WHERE ts > ? ORDER BY ts DESC LIMIT ?",
-            (cutoff, limit),
+            "SELECT * FROM clients WHERE ts > ? AND site = ? ORDER BY ts DESC LIMIT ?",
+            (cutoff, site, limit),
         ).fetchall()
 
-    def get_wan_export(self, hours: float = 24, limit: int = 10000) -> list[dict]:
+    def get_wan_export(
+        self, hours: float = 24, limit: int = 10000, site: str = "default"
+    ) -> list[dict]:
         cutoff = time.time() - (hours * 3600)
         return self._conn.execute(
-            "SELECT * FROM wan_metrics WHERE ts > ? ORDER BY ts DESC LIMIT ?",
-            (cutoff, limit),
+            "SELECT * FROM wan_metrics WHERE ts > ? AND site = ? ORDER BY ts DESC LIMIT ?",
+            (cutoff, site, limit),
         ).fetchall()
 
     def get_db_stats(self) -> dict:

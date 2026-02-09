@@ -37,6 +37,14 @@ def get_db(request: Request) -> Database:
     return db
 
 
+def get_site(request: Request, site: str = Query(None)) -> str:
+    """FastAPI dependency: resolve the active site name."""
+    sites = getattr(request.app.state, "sites", ["default"])
+    if site is None or site not in sites:
+        return sites[0]
+    return site
+
+
 def _fmt_bytes(b: int | float | None) -> str:
     if not b:
         return "0 B"
@@ -111,14 +119,23 @@ def auth_token() -> dict:
     return {"token": _ws_token()}
 
 
+@router.get("/sites")
+def list_sites(request: Request) -> dict:
+    """Return configured site list and default site."""
+    sites = getattr(request.app.state, "sites", ["default"])
+    return {"sites": sites, "default": sites[0]}
+
+
 @router.get("/overview")
-def overview(db: Database = Depends(get_db)) -> dict:
+def overview(
+    db: Database = Depends(get_db), site: str = Depends(get_site)
+) -> dict:
     """Dashboard overview: WAN status, device/client counts, health score."""
     try:
-        wan = db.get_latest_wan()
-        devices = db.get_latest_devices()
-        clients = db.get_latest_clients()
-        alarms = db.get_active_alarms()
+        wan = db.get_latest_wan(site=site)
+        devices = db.get_latest_devices(site=site)
+        clients = db.get_latest_clients(site=site)
+        alarms = db.get_active_alarms(site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -154,12 +171,13 @@ def overview(db: Database = Depends(get_db)) -> dict:
 @router.get("/clients")
 def get_clients(
     db: Database = Depends(get_db),
+    site: str = Depends(get_site),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
 ) -> dict:
     """All connected clients with stats, paginated."""
     try:
-        clients = db.get_latest_clients()
+        clients = db.get_latest_clients(site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     clients.sort(key=lambda c: c.get("rx_bytes") or 0, reverse=True)
@@ -175,20 +193,23 @@ def get_clients(
 def client_history(
     mac: str,
     db: Database = Depends(get_db),
+    site: str = Depends(get_site),
     hours: float = Query(24, ge=0.1, le=8760),
 ) -> list[dict]:
     """Signal/satisfaction history for a specific client."""
     try:
-        return db.get_client_history(mac, hours)
+        return db.get_client_history(mac, hours, site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @router.get("/devices")
-def get_devices(db: Database = Depends(get_db)) -> list[dict]:
+def get_devices(
+    db: Database = Depends(get_db), site: str = Depends(get_site)
+) -> list[dict]:
     """All adopted devices with stats."""
     try:
-        return db.get_latest_devices()
+        return db.get_latest_devices(site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -196,11 +217,12 @@ def get_devices(db: Database = Depends(get_db)) -> list[dict]:
 @router.get("/wan/history")
 def wan_history(
     db: Database = Depends(get_db),
+    site: str = Depends(get_site),
     hours: float = Query(24, ge=0.1, le=8760),
 ) -> list[dict]:
     """WAN latency and status history."""
     try:
-        return db.get_wan_history(hours)
+        return db.get_wan_history(hours, site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -208,12 +230,13 @@ def wan_history(
 @router.get("/traffic/top-talkers")
 def top_talkers(
     db: Database = Depends(get_db),
+    site: str = Depends(get_site),
     hours: float = Query(1, ge=0.1, le=8760),
     limit: int = Query(20, ge=1, le=1000),
 ) -> list[dict]:
     """Top source IPs by bytes (NetFlow data)."""
     try:
-        rows = db.get_top_talkers(hours, limit)
+        rows = db.get_top_talkers(hours, limit, site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
@@ -224,12 +247,13 @@ def top_talkers(
 @router.get("/traffic/top-destinations")
 def top_destinations(
     db: Database = Depends(get_db),
+    site: str = Depends(get_site),
     hours: float = Query(1, ge=0.1, le=8760),
     limit: int = Query(20, ge=1, le=1000),
 ) -> list[dict]:
     """Top destination IPs by bytes (NetFlow data)."""
     try:
-        rows = db.get_top_destinations(hours, limit)
+        rows = db.get_top_destinations(hours, limit, site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
@@ -240,12 +264,13 @@ def top_destinations(
 @router.get("/traffic/top-ports")
 def top_ports(
     db: Database = Depends(get_db),
+    site: str = Depends(get_site),
     hours: float = Query(1, ge=0.1, le=8760),
     limit: int = Query(20, ge=1, le=1000),
 ) -> list[dict]:
     """Top destination ports by bytes."""
     try:
-        rows = db.get_top_ports(hours, limit)
+        rows = db.get_top_ports(hours, limit, site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
@@ -257,12 +282,13 @@ def top_ports(
 @router.get("/traffic/dns-queries")
 def dns_queries(
     db: Database = Depends(get_db),
+    site: str = Depends(get_site),
     hours: float = Query(1, ge=0.1, le=8760),
     limit: int = Query(100, ge=1, le=1000),
 ) -> list[dict]:
     """DNS query aggregates: per-client-per-server."""
     try:
-        rows = db.get_dns_queries(hours, limit)
+        rows = db.get_dns_queries(hours, limit, site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
@@ -273,12 +299,13 @@ def dns_queries(
 @router.get("/traffic/dns-top-clients")
 def dns_top_clients(
     db: Database = Depends(get_db),
+    site: str = Depends(get_site),
     hours: float = Query(1, ge=0.1, le=8760),
     limit: int = Query(20, ge=1, le=1000),
 ) -> list[dict]:
     """Top DNS-querying clients by flow count."""
     try:
-        rows = db.get_dns_top_clients(hours, limit)
+        rows = db.get_dns_top_clients(hours, limit, site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
@@ -289,12 +316,13 @@ def dns_top_clients(
 @router.get("/traffic/dns-top-servers")
 def dns_top_servers(
     db: Database = Depends(get_db),
+    site: str = Depends(get_site),
     hours: float = Query(1, ge=0.1, le=8760),
     limit: int = Query(20, ge=1, le=1000),
 ) -> list[dict]:
     """Top DNS servers by flow count."""
     try:
-        rows = db.get_dns_top_servers(hours, limit)
+        rows = db.get_dns_top_servers(hours, limit, site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
@@ -305,12 +333,13 @@ def dns_top_servers(
 @router.get("/traffic/bandwidth")
 def bandwidth_timeseries(
     db: Database = Depends(get_db),
+    site: str = Depends(get_site),
     hours: float = Query(24, ge=0.1, le=8760),
     bucket_minutes: int = Query(5, ge=1, le=1440),
 ) -> list[dict]:
     """Bandwidth over time in configurable buckets."""
     try:
-        rows = db.get_bandwidth_timeseries(hours, bucket_minutes)
+        rows = db.get_bandwidth_timeseries(hours, bucket_minutes, site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
@@ -319,10 +348,12 @@ def bandwidth_timeseries(
 
 
 @router.get("/alarms")
-def get_alarms(db: Database = Depends(get_db)) -> list[dict]:
+def get_alarms(
+    db: Database = Depends(get_db), site: str = Depends(get_site)
+) -> list[dict]:
     """Active (non-archived) alarms."""
     try:
-        return db.get_active_alarms()
+        return db.get_active_alarms(site=site)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -347,12 +378,13 @@ def _csv_response(rows: list[dict], name: str) -> StreamingResponse:
 @router.get("/export/clients")
 def export_clients(
     db: Database = Depends(get_db),
+    site: str = Depends(get_site),
     hours: float = Query(24, ge=0.1, le=8760),
     format: str = Query("json", pattern=r"^(json|csv)$"),
     limit: int = Query(10000, ge=1, le=10000),
 ) -> Any:
     """Export client data as JSON or CSV."""
-    rows = db.get_clients_export(hours, limit)
+    rows = db.get_clients_export(hours, limit, site=site)
     if format == "csv":
         return _csv_response(rows, "clients")
     return rows
@@ -361,12 +393,13 @@ def export_clients(
 @router.get("/export/wan")
 def export_wan(
     db: Database = Depends(get_db),
+    site: str = Depends(get_site),
     hours: float = Query(24, ge=0.1, le=8760),
     format: str = Query("json", pattern=r"^(json|csv)$"),
     limit: int = Query(10000, ge=1, le=10000),
 ) -> Any:
     """Export WAN metrics as JSON or CSV."""
-    rows = db.get_wan_export(hours, limit)
+    rows = db.get_wan_export(hours, limit, site=site)
     if format == "csv":
         return _csv_response(rows, "wan")
     return rows

@@ -85,17 +85,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         alert_engine = AlertEngine(webhook_url=config.alert_webhook_url)
         log.info("Alert engine enabled (webhook: %s)", config.alert_webhook_url[:50])
 
-    # Start UniFi API poller (with WS broadcast + alerts)
-    poller = Poller(db, broadcast_fn=ws_manager.broadcast, alert_engine=alert_engine)
-    poller_task = asyncio.create_task(poller.run())
+    # Store site list for routes
+    app.state.sites = config.unifi_sites
 
-    # Start NetFlow collector
+    # Start UniFi API pollers (one per site)
+    pollers = []
+    poller_tasks = []
+    for site_name in config.unifi_sites:
+        p = Poller(
+            db,
+            broadcast_fn=ws_manager.broadcast,
+            alert_engine=alert_engine,
+            site=site_name,
+        )
+        pollers.append(p)
+        poller_tasks.append(asyncio.create_task(p.run()))
+
+    # Start NetFlow collector (tagged with primary site)
     nf_transport = None
     if config.netflow_enabled:
         from .netflow.collector import start_collector
 
         try:
-            nf_transport = await start_collector(db, config.netflow_host, config.netflow_port)
+            nf_transport = await start_collector(
+                db, config.netflow_host, config.netflow_port, site=config.unifi_sites[0]
+            )
         except Exception as e:
             log.error("NetFlow collector failed to start: %s", e)
 
@@ -114,11 +128,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     # Shutdown: cancel tasks with grace period
-    poller.stop()
+    for p in pollers:
+        p.stop()
     cleanup_task.cancel()
 
-    tasks = [poller_task, cleanup_task]
-    done, pending = await asyncio.wait(tasks, timeout=5)
+    all_tasks = poller_tasks + [cleanup_task]
+    done, pending = await asyncio.wait(all_tasks, timeout=5)
     for t in pending:
         t.cancel()
 

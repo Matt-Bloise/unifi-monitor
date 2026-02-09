@@ -114,13 +114,15 @@ class Poller:
         db: Database,
         broadcast_fn: Callable[..., Any] | None = None,
         alert_engine: Any | None = None,
+        site: str = "default",
     ) -> None:
         self.db = db
+        self.site = site
         self.client = UnifiClient(
             host=config.unifi_host,
             username=config.unifi_username,
             password=config.unifi_password,
-            site=config.unifi_site,
+            site=site,
             port=config.unifi_port,
         )
         self._broadcast_fn = broadcast_fn
@@ -204,35 +206,36 @@ class Poller:
                 mem_pct=wan["mem_pct"],
                 download_bps=wan.get("rx_bytes_r"),
                 upload_bps=wan.get("tx_bytes_r"),
+                site=self.site,
             )
 
     def _poll_devices(self, ts: float) -> None:
         raw = self.client.get_devices()
         devices = [d for d in (_parse_device(r) for r in raw) if d is not None]
         if devices:
-            self.db.insert_devices(ts, devices)
+            self.db.insert_devices(ts, devices, site=self.site)
 
     def _poll_clients(self, ts: float) -> None:
         raw = self.client.get_clients()
         clients = [c for c in (_parse_client(r) for r in raw) if c is not None]
         if clients:
-            self.db.insert_clients(ts, clients)
+            self.db.insert_clients(ts, clients, site=self.site)
 
     def _poll_alarms(self, ts: float) -> None:
         raw = self.client.get_alarms()
         alarms = [_parse_alarm(a) for a in raw]
         if alarms:
-            self.db.insert_alarms(ts, alarms)
+            self.db.insert_alarms(ts, alarms, site=self.site)
 
     def _build_snapshot(self) -> dict | None:
         """Build a snapshot dict from latest DB state for WS broadcast + alerts."""
         from .api.routes import _compute_health
 
         try:
-            wan = self.db.get_latest_wan()
-            devices = self.db.get_latest_devices()
-            clients = self.db.get_latest_clients()
-            alarms = self.db.get_active_alarms()
+            wan = self.db.get_latest_wan(site=self.site)
+            devices = self.db.get_latest_devices(site=self.site)
+            clients = self.db.get_latest_clients(site=self.site)
+            alarms = self.db.get_active_alarms(site=self.site)
         except Exception as e:
             log.debug("Snapshot build failed: %s", e)
             return None
@@ -243,6 +246,7 @@ class Poller:
 
         return {
             "type": "update",
+            "site": self.site,
             "overview": {
                 "health_score": health["score"],
                 "health_factors": health["factors"],

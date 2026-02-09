@@ -445,3 +445,20 @@ tr:hover { background: rgba(59, 130, 246, 0.05); }
 .chart-container-sm {
     height: 180px;
 }
+
+/* Site selector */
+.site-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.site-select:hover, .site-select:focus {
+    border-color: var(--accent);
+}

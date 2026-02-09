@@ -353,6 +353,56 @@ class TestDns:
         assert self.db.get_dns_top_servers() == []
 
 
+class TestMultiSite:
+    def setup_method(self, method):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self.db = Database(Path(self._tmpdir) / "test.db")
+
+    def test_site_column_exists(self):
+        cols = [
+            r["name"]
+            for r in self.db._conn.execute("PRAGMA table_info(wan_metrics)").fetchall()
+        ]
+        assert "site" in cols
+
+    def test_insert_and_query_by_site(self):
+        ts = time.time()
+        self.db.insert_wan(ts, "ok", 10.0, "1.2.3.4", 30.0, 80.0, site="siteA")
+        self.db.insert_wan(ts, "ok", 20.0, "5.6.7.8", 40.0, 90.0, site="siteB")
+        a = self.db.get_latest_wan(site="siteA")
+        b = self.db.get_latest_wan(site="siteB")
+        assert a["latency_ms"] == 10.0
+        assert b["latency_ms"] == 20.0
+
+    def test_default_site(self):
+        ts = time.time()
+        self.db.insert_wan(ts, "ok", 15.0, "1.2.3.4", 30.0, 80.0)
+        wan = self.db.get_latest_wan()
+        assert wan is not None
+        assert wan["site"] == "default"
+
+    def test_latest_devices_filters_by_site(self):
+        ts = time.time()
+        self.db.insert_devices(ts, [{"mac": "aa:bb:cc:dd:ee:ff", "name": "GW"}], site="siteA")
+        self.db.insert_devices(ts, [{"mac": "11:22:33:44:55:66", "name": "AP"}], site="siteB")
+        a = self.db.get_latest_devices(site="siteA")
+        b = self.db.get_latest_devices(site="siteB")
+        assert len(a) == 1
+        assert a[0]["name"] == "GW"
+        assert len(b) == 1
+        assert b[0]["name"] == "AP"
+
+    def test_cleanup_all_sites(self):
+        old_ts = time.time() - 999999
+        self.db.insert_wan(old_ts, "ok", 10.0, "1.2.3.4", 30.0, 80.0, site="siteA")
+        self.db.insert_wan(old_ts, "ok", 20.0, "5.6.7.8", 40.0, 90.0, site="siteB")
+        self.db.cleanup(retention_hours=1)
+        assert self.db.get_latest_wan(site="siteA") is None
+        assert self.db.get_latest_wan(site="siteB") is None
+
+
 class TestEmptyDefaults:
     """Extracted from TestDatabase for clarity."""
 

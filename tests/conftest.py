@@ -159,4 +159,5 @@ def test_client(populated_db: Database) -> TestClient:
 
     app.state.db = populated_db
     app.state.start_time = time.time()
+    app.state.sites = ["default"]
     return TestClient(app)

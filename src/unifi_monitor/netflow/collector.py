@@ -19,8 +19,11 @@ MAX_PACKET_SIZE = 65535
 class NetFlowProtocol(asyncio.DatagramProtocol):
     """Asyncio UDP protocol for NetFlow/IPFIX packets."""
 
-    def __init__(self, db: Database, batch_interval: float = 10.0) -> None:
+    def __init__(
+        self, db: Database, batch_interval: float = 10.0, site: str = "default"
+    ) -> None:
         self.db = db
+        self.site = site
         self.templates: dict = {"netflow": {}, "ipfix": {}}
         self.batch: list[dict] = []
         self._lock = threading.Lock()
@@ -54,7 +57,7 @@ class NetFlowProtocol(asyncio.DatagramProtocol):
             self.batch.clear()
         self._last_flush = ts
         try:
-            self.db.insert_netflow_batch(ts, batch_copy)
+            self.db.insert_netflow_batch(ts, batch_copy, site=self.site)
         except Exception as e:
             log.warning("NetFlow DB write error: %s", e)
 
@@ -63,12 +66,12 @@ class NetFlowProtocol(asyncio.DatagramProtocol):
 
 
 async def start_collector(
-    db: Database, host: str = "0.0.0.0", port: int = 2055
+    db: Database, host: str = "0.0.0.0", port: int = 2055, site: str = "default"
 ) -> asyncio.BaseTransport:
     """Start the NetFlow UDP listener. Returns the transport for cleanup."""
     loop = asyncio.get_running_loop()
     transport, protocol = await loop.create_datagram_endpoint(
-        lambda: NetFlowProtocol(db),
+        lambda: NetFlowProtocol(db, site=site),
         local_addr=(host, port),
     )
     log.info("NetFlow collector listening on %s:%d", host, port)
