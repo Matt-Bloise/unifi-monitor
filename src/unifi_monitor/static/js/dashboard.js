@@ -31,7 +31,7 @@ function getChartColors() {
 
 function updateChartColors() {
     var c = getChartColors();
-    var charts = [bandwidthChart, latencyChart];
+    var charts = [bandwidthChart, latencyChart, compareChart];
     if (clientDetailCharts.signal) charts.push(clientDetailCharts.signal);
     if (clientDetailCharts.satisfaction) charts.push(clientDetailCharts.satisfaction);
 
@@ -73,6 +73,8 @@ const WS_MAX_BACKOFF_MS = 30000;
 let bandwidthChart = null;
 let latencyChart = null;
 let currentSite = 'default';
+let compareChart = null;
+let compareMetric = 'latency';
 
 function siteParam(url) {
     var sep = url.indexOf('?') >= 0 ? '&' : '?';
@@ -566,6 +568,87 @@ function renderDnsServers(data) {
     }).join('');
 }
 
+async function loadComparison() {
+    var url = siteParam('/api/compare?metric=' + compareMetric + '&hours=24&offset_hours=168');
+    var data = await fetchJSON(url);
+    if (data) renderComparison(data);
+}
+
+function renderComparison(data) {
+    var summary = data.summary || {};
+    var el = document.getElementById('compare-summary');
+
+    var cAvg = summary.current_avg != null ? summary.current_avg : '--';
+    var pAvg = summary.previous_avg != null ? summary.previous_avg : '--';
+    var delta = summary.delta_pct != null ? (summary.delta_pct > 0 ? '+' : '') + summary.delta_pct + '%' : '--';
+    var dir = summary.direction || 'same';
+    var dirClass = dir === 'better' ? 'compare-better' : (dir === 'worse' ? 'compare-worse' : 'compare-same');
+
+    el.innerHTML =
+        '<div class="compare-stat"><div class="label">Current Avg</div><div class="value">' + cAvg + '</div></div>' +
+        '<div class="compare-stat"><div class="label">Previous Avg</div><div class="value">' + pAvg + '</div></div>' +
+        '<div class="compare-stat"><div class="label">Change</div><div class="value ' + dirClass + '">' + delta + '</div></div>';
+
+    // Chart
+    var current = data.current || [];
+    var previous = data.previous || [];
+
+    // Use relative hours for x-axis alignment
+    var cLabels = current.map(function(d, i) { return i + 'h'; });
+    var pLabels = previous.map(function(d, i) { return i + 'h'; });
+    var maxLen = Math.max(cLabels.length, pLabels.length);
+    var labels = [];
+    for (var i = 0; i < maxLen; i++) labels.push(i + 'h');
+
+    // Pick value key based on metric
+    var valKey = compareMetric === 'latency' ? 'avg' : (compareMetric === 'bandwidth' ? 'total_bytes' : 'client_count');
+    var cVals = current.map(function(d) { return d[valKey] || 0; });
+    var pVals = previous.map(function(d) { return d[valKey] || 0; });
+
+    var cc = getChartColors();
+
+    if (compareChart) {
+        compareChart.data.labels = labels;
+        compareChart.data.datasets[0].data = cVals;
+        compareChart.data.datasets[1].data = pVals;
+        compareChart.update('none');
+    } else {
+        var ctx = document.getElementById('compare-chart');
+        compareChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Current',
+                        data: cVals,
+                        borderColor: cc.accent,
+                        backgroundColor: cc.accent + '1a',
+                        fill: false, tension: 0.3, pointRadius: 0,
+                    },
+                    {
+                        label: 'Previous',
+                        data: pVals,
+                        borderColor: cc.textDim,
+                        backgroundColor: cc.textDim + '1a',
+                        borderDash: [5, 5],
+                        fill: false, tension: 0.3, pointRadius: 0,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: true, labels: { color: cc.textDim } } },
+                scales: {
+                    x: { ticks: { color: cc.textDim, maxTicksLimit: 12 }, grid: { color: cc.border } },
+                    y: { ticks: { color: cc.textDim }, grid: { color: cc.border }, beginAtZero: true },
+                },
+            },
+        });
+    }
+}
+
 function renderBandwidthChart(data) {
     if (!data || !data.length) return;
 
@@ -738,6 +821,7 @@ async function refresh() {
     renderDnsClients(results[8]);
     renderDnsServers(results[9]);
 
+    loadComparison();
     updateStatusBanner();
 }
 
@@ -782,6 +866,13 @@ document.getElementById('refresh-btn').addEventListener('click', function() {
 
 // Theme toggle
 document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+
+// Compare metric selector
+document.getElementById('compare-metric').addEventListener('change', function() {
+    compareMetric = this.value;
+    if (compareChart) { compareChart.destroy(); compareChart = null; }
+    loadComparison();
+});
 
 // Periodic stale check (even when paused, update the banner)
 setInterval(updateStatusBanner, 10000);

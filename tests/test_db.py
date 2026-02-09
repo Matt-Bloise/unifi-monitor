@@ -403,6 +403,70 @@ class TestMultiSite:
         assert self.db.get_latest_wan(site="siteB") is None
 
 
+class TestComparison:
+    def setup_method(self, method):
+        import tempfile
+
+        self._tmpdir = tempfile.mkdtemp()
+        self.db = Database(Path(self._tmpdir) / "test.db")
+
+    def test_latency_with_both_windows(self):
+        now = time.time()
+        # Current window: last 24h
+        for i in range(3):
+            self.db.insert_wan(now - (i * 3600), "ok", 15.0 + i, "1.2.3.4", 30.0, 80.0)
+        # Previous window: 168h ago (last week)
+        for i in range(3):
+            self.db.insert_wan(
+                now - (168 * 3600) - (i * 3600), "ok", 25.0 + i, "1.2.3.4", 30.0, 80.0
+            )
+        result = self.db.get_comparison("latency", hours=24, offset_hours=168)
+        assert "current" in result
+        assert "previous" in result
+        assert "summary" in result
+        s = result["summary"]
+        assert s["current_avg"] is not None
+        assert s["previous_avg"] is not None
+        # Current avg ~16, previous avg ~26 -> lower is better -> "better"
+        assert s["direction"] == "better"
+        assert s["delta_pct"] is not None
+        assert s["delta_pct"] < 0  # decrease = negative delta
+
+    def test_bandwidth_comparison(self):
+        now = time.time()
+        flows = [
+            {"src_ip": "10.0.0.1", "dst_ip": "10.0.0.2", "src_port": 1,
+             "dst_port": 443, "protocol": 6, "bytes": 5000, "packets": 10},
+        ]
+        self.db.insert_netflow_batch(now, flows)
+        self.db.insert_netflow_batch(now - (168 * 3600), flows)
+        result = self.db.get_comparison("bandwidth", hours=24, offset_hours=168)
+        assert len(result["current"]) >= 1
+        assert len(result["previous"]) >= 1
+
+    def test_client_count_comparison(self):
+        now = time.time()
+        clients = [{"mac": "aa:bb:cc:dd:ee:ff", "hostname": "test"}]
+        self.db.insert_clients(now, clients)
+        self.db.insert_clients(now - (168 * 3600), clients)
+        result = self.db.get_comparison("client_count", hours=24, offset_hours=168)
+        assert len(result["current"]) >= 1
+
+    def test_unknown_metric(self):
+        result = self.db.get_comparison("bogus")
+        assert "error" in result
+
+    def test_no_previous_data(self):
+        now = time.time()
+        self.db.insert_wan(now, "ok", 15.0, "1.2.3.4", 30.0, 80.0)
+        result = self.db.get_comparison("latency", hours=24, offset_hours=168)
+        s = result["summary"]
+        # No previous data -> delta is None
+        assert s["current_avg"] is not None
+        assert s["previous_avg"] is None
+        assert s["delta_pct"] is None
+
+
 class TestEmptyDefaults:
     """Extracted from TestDatabase for clarity."""
 

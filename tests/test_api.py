@@ -188,6 +188,24 @@ class TestDnsTraffic:
         assert len(data) >= 1
 
 
+class TestComparison:
+    def test_compare_latency(self, test_client: TestClient):
+        resp = test_client.get("/api/compare?metric=latency&hours=24&offset_hours=168")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "current" in data
+        assert "previous" in data
+        assert "summary" in data
+
+    def test_compare_invalid_metric(self, test_client: TestClient):
+        resp = test_client.get("/api/compare?metric=bogus")
+        assert resp.status_code == 422
+
+    def test_compare_missing_metric(self, test_client: TestClient):
+        resp = test_client.get("/api/compare")
+        assert resp.status_code == 422
+
+
 class TestAlarms:
     def test_alarms_returns_active(self, test_client: TestClient):
         resp = test_client.get("/api/alarms")

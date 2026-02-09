@@ -36,6 +36,20 @@
             <div class="card skeleton"><div class="label">Loading...</div><div class="value skeleton-text">&nbsp;</div></div>
         </div>
 
+        <!-- Historical Comparison -->
+        <div class="panel panel-full" id="comparison-panel">
+            <div class="panel-header">
+                <h2>This Week vs Last Week</h2>
+                <select id="compare-metric" class="site-select">
+                    <option value="latency">Latency</option>
+                    <option value="bandwidth">Bandwidth</option>
+                    <option value="client_count">Client Count</option>
+                </select>
+            </div>
+            <div class="compare-summary" id="compare-summary"></div>
+            <div class="chart-container"><canvas id="compare-chart"></canvas></div>
+        </div>
+
         <!-- Alarms -->
         <div class="panel panel-full" id="alarms-panel" style="display:none">
             <h2>Active Alarms</h2>

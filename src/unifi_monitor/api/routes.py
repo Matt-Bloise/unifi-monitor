@@ -347,6 +347,18 @@ def bandwidth_timeseries(
     return rows
 
 
+@router.get("/compare")
+def compare(
+    db: Database = Depends(get_db),
+    site: str = Depends(get_site),
+    metric: str = Query(..., pattern=r"^(latency|bandwidth|client_count)$"),
+    hours: float = Query(24, ge=1, le=8760),
+    offset_hours: float = Query(168, ge=1, le=8760),
+) -> dict:
+    """Historical comparison: current window vs previous window."""
+    return db.get_comparison(metric, hours, offset_hours, site=site)
+
+
 @router.get("/alarms")
 def get_alarms(
     db: Database = Depends(get_db), site: str = Depends(get_site)

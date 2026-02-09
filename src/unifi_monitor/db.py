@@ -406,6 +406,113 @@ class Database:
             (cutoff, site, limit),
         ).fetchall()
 
+    # -- Historical comparison --
+
+    def get_comparison(
+        self,
+        metric: str,
+        hours: float = 24,
+        offset_hours: float = 168,
+        site: str = "default",
+    ) -> dict:
+        now = time.time()
+        c_end = now
+        c_start = now - (hours * 3600)
+        p_end = now - (offset_hours * 3600)
+        p_start = now - ((offset_hours + hours) * 3600)
+
+        dispatch = {
+            "latency": self._compare_latency,
+            "bandwidth": self._compare_bandwidth,
+            "client_count": self._compare_client_count,
+        }
+        fn = dispatch.get(metric)
+        if fn is None:
+            return {"error": f"Unknown metric: {metric}"}
+        return fn(c_start, c_end, p_start, p_end, site)
+
+    def _compare_latency(
+        self, c_start: float, c_end: float, p_start: float, p_end: float, site: str
+    ) -> dict:
+        def _query(start: float, end: float) -> list[dict]:
+            return self._conn.execute(
+                """SELECT CAST(ts / 3600 AS INTEGER) * 3600 as bucket,
+                          AVG(latency_ms) as avg, MIN(latency_ms) as min, MAX(latency_ms) as max
+                   FROM wan_metrics
+                   WHERE ts BETWEEN ? AND ? AND site = ? AND latency_ms IS NOT NULL
+                   GROUP BY bucket ORDER BY bucket""",
+                (start, end, site),
+            ).fetchall()
+
+        current = _query(c_start, c_end)
+        previous = _query(p_start, p_end)
+        return self._build_comparison(current, previous, "avg", lower_is_better=True)
+
+    def _compare_bandwidth(
+        self, c_start: float, c_end: float, p_start: float, p_end: float, site: str
+    ) -> dict:
+        def _query(start: float, end: float) -> list[dict]:
+            return self._conn.execute(
+                """SELECT CAST(ts / 3600 AS INTEGER) * 3600 as bucket,
+                          SUM(bytes) as total_bytes
+                   FROM netflow
+                   WHERE ts BETWEEN ? AND ? AND site = ?
+                   GROUP BY bucket ORDER BY bucket""",
+                (start, end, site),
+            ).fetchall()
+
+        current = _query(c_start, c_end)
+        previous = _query(p_start, p_end)
+        return self._build_comparison(current, previous, "total_bytes", lower_is_better=False)
+
+    def _compare_client_count(
+        self, c_start: float, c_end: float, p_start: float, p_end: float, site: str
+    ) -> dict:
+        def _query(start: float, end: float) -> list[dict]:
+            return self._conn.execute(
+                """SELECT CAST(ts / 3600 AS INTEGER) * 3600 as bucket,
+                          COUNT(DISTINCT mac) as client_count
+                   FROM clients
+                   WHERE ts BETWEEN ? AND ? AND site = ?
+                   GROUP BY bucket ORDER BY bucket""",
+                (start, end, site),
+            ).fetchall()
+
+        current = _query(c_start, c_end)
+        previous = _query(p_start, p_end)
+        return self._build_comparison(current, previous, "client_count", lower_is_better=False)
+
+    @staticmethod
+    def _build_comparison(
+        current: list[dict], previous: list[dict], value_key: str, lower_is_better: bool
+    ) -> dict:
+        def _avg(rows: list[dict]) -> float | None:
+            vals = [r[value_key] for r in rows if r.get(value_key) is not None]
+            return sum(vals) / len(vals) if vals else None
+
+        c_avg = _avg(current)
+        p_avg = _avg(previous)
+
+        delta_pct: float | None = None
+        direction: str = "same"
+        if c_avg is not None and p_avg is not None and p_avg != 0:
+            delta_pct = round(((c_avg - p_avg) / p_avg) * 100, 1)
+            if lower_is_better:
+                direction = "better" if c_avg < p_avg else ("worse" if c_avg > p_avg else "same")
+            else:
+                direction = "better" if c_avg > p_avg else ("worse" if c_avg < p_avg else "same")
+
+        return {
+            "current": current,
+            "previous": previous,
+            "summary": {
+                "current_avg": round(c_avg, 2) if c_avg is not None else None,
+                "previous_avg": round(p_avg, 2) if p_avg is not None else None,
+                "delta_pct": delta_pct,
+                "direction": direction,
+            },
+        }
+
     def get_db_stats(self) -> dict:
         """Return row counts per table, DB file size, and last write timestamp."""
         stats: dict = {"last_write_ts": self._last_write_ts}
