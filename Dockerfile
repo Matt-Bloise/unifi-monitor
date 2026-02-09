@@ -1,13 +1,13 @@
 FROM python:3.12-slim AS builder
-LABEL org.opencontainers.image.source=https://github.com/Matt-Bloise/unifi-monitor
-LABEL org.opencontainers.image.description="Real-time network monitoring dashboard for UniFi networks"
-LABEL org.opencontainers.image.licenses=MIT
 WORKDIR /build
 COPY pyproject.toml .
 COPY src/ src/
 RUN pip install --no-cache-dir --prefix=/install ".[netflow]"
 
 FROM python:3.12-slim
+LABEL org.opencontainers.image.source=https://github.com/Matt-Bloise/unifi-monitor
+LABEL org.opencontainers.image.description="Real-time network monitoring dashboard for UniFi networks"
+LABEL org.opencontainers.image.licenses=MIT
 RUN groupadd -r monitor && useradd -r -g monitor monitor
 WORKDIR /app
 COPY --from=builder /install /usr/local
