@@ -35,6 +35,9 @@ unifi-monitor = "unifi_monitor.app:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+unifi_monitor = ["static/**/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
