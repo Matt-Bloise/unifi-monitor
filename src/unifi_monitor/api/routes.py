@@ -3,15 +3,26 @@
 
 from __future__ import annotations
 
+import hashlib
+import secrets
 import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
+from ..config import config
 from ..db import Database
 
 router = APIRouter(prefix="/api")
+
+
+def _ws_token(hour_offset: int = 0) -> str:
+    """Generate an hour-based WS auth token. Accepts current and previous hour."""
+    hour = int(time.time() // 3600) + hour_offset
+    raw = f"{config.auth_username}:{config.auth_password}:{hour}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
 
 PROTO_MAP = {1: "ICMP", 6: "TCP", 17: "UDP", 47: "GRE", 50: "ESP", 58: "ICMPv6"}
 
@@ -88,6 +99,14 @@ def health_check(request: Request) -> dict:
     else:
         result["status"] = "starting"
     return result
+
+
+@router.get("/auth/token")
+def auth_token() -> dict:
+    """Return a WS auth token. Requires valid Basic Auth (enforced by middleware)."""
+    if not config.auth_username or not config.auth_password:
+        return {"token": ""}
+    return {"token": _ws_token()}
 
 
 @router.get("/overview")
@@ -261,6 +280,16 @@ def get_alarms(db: Database = Depends(get_db)) -> list[dict]:
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """WebSocket endpoint for live dashboard updates."""
+    # Auth check for WebSocket (middleware doesn't intercept WS scope)
+    if config.auth_username and config.auth_password:
+        token = websocket.query_params.get("token", "")
+        valid = secrets.compare_digest(token, _ws_token(0)) or secrets.compare_digest(
+            token, _ws_token(-1)
+        )
+        if not valid:
+            await websocket.close(code=4001, reason="Unauthorized")
+            return
+
     manager = websocket.app.state.ws_manager
     await manager.connect(websocket)
     try:

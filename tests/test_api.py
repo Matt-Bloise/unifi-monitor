@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 import time
 
 from fastapi.testclient import TestClient
 
 from unifi_monitor.app import app
+from unifi_monitor.config import config
 from unifi_monitor.db import Database
 
 
@@ -190,3 +192,63 @@ class TestHealthScoreCalculation:
         data = resp.json()
         assert data["health_score"] <= 85
         assert any("offline" in f for f in data["health_factors"])
+
+
+class TestAuth:
+    """HTTP Basic Auth middleware + WS token tests."""
+
+    def _basic_header(self, user: str, password: str) -> dict:
+        creds = base64.b64encode(f"{user}:{password}".encode()).decode()
+        return {"Authorization": f"Basic {creds}"}
+
+    def test_no_auth_configured_passes(self, test_client: TestClient, monkeypatch):
+        monkeypatch.setattr(config, "auth_username", "")
+        monkeypatch.setattr(config, "auth_password", "")
+        resp = test_client.get("/api/overview")
+        assert resp.status_code == 200
+
+    def test_auth_configured_no_creds_returns_401(self, test_client: TestClient, monkeypatch):
+        monkeypatch.setattr(config, "auth_username", "admin")
+        monkeypatch.setattr(config, "auth_password", "secret")
+        resp = test_client.get("/api/overview")
+        assert resp.status_code == 401
+        assert "WWW-Authenticate" in resp.headers
+
+    def test_auth_configured_valid_creds(self, test_client: TestClient, monkeypatch):
+        monkeypatch.setattr(config, "auth_username", "admin")
+        monkeypatch.setattr(config, "auth_password", "secret")
+        resp = test_client.get("/api/overview", headers=self._basic_header("admin", "secret"))
+        assert resp.status_code == 200
+
+    def test_auth_configured_wrong_password(self, test_client: TestClient, monkeypatch):
+        monkeypatch.setattr(config, "auth_username", "admin")
+        monkeypatch.setattr(config, "auth_password", "secret")
+        resp = test_client.get("/api/overview", headers=self._basic_header("admin", "wrong"))
+        assert resp.status_code == 401
+
+    def test_health_bypasses_auth(self, test_client: TestClient, monkeypatch):
+        monkeypatch.setattr(config, "auth_username", "admin")
+        monkeypatch.setattr(config, "auth_password", "secret")
+        resp = test_client.get("/api/health")
+        assert resp.status_code == 200
+
+    def test_token_returns_hash_when_auth_enabled(self, test_client: TestClient, monkeypatch):
+        monkeypatch.setattr(config, "auth_username", "admin")
+        monkeypatch.setattr(config, "auth_password", "secret")
+        resp = test_client.get("/api/auth/token", headers=self._basic_header("admin", "secret"))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["token"]) == 32
+
+    def test_token_returns_empty_when_auth_disabled(self, test_client: TestClient, monkeypatch):
+        monkeypatch.setattr(config, "auth_username", "")
+        monkeypatch.setattr(config, "auth_password", "")
+        resp = test_client.get("/api/auth/token")
+        assert resp.status_code == 200
+        assert resp.json()["token"] == ""
+
+    def test_root_requires_auth(self, test_client: TestClient, monkeypatch):
+        monkeypatch.setattr(config, "auth_username", "admin")
+        monkeypatch.setattr(config, "auth_password", "secret")
+        resp = test_client.get("/")
+        assert resp.status_code == 401

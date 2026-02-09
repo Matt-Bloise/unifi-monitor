@@ -5,7 +5,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
+import secrets
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -15,6 +17,9 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
 
 from .alerts import AlertEngine
 from .config import config
@@ -25,6 +30,42 @@ from .ws import ConnectionManager
 log = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+class BasicAuthMiddleware(BaseHTTPMiddleware):
+    """HTTP Basic Auth middleware. Reads config at request time for testability."""
+
+    _SKIP_PATHS = frozenset({"/api/health"})
+
+    async def dispatch(self, request: StarletteRequest, call_next):  # type: ignore[override]
+        username = config.auth_username
+        password = config.auth_password
+
+        # Auth disabled if either is empty
+        if not username or not password:
+            return await call_next(request)
+
+        # Skip healthcheck (Docker / uptime probes)
+        if request.url.path in self._SKIP_PATHS:
+            return await call_next(request)
+
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+                provided_user, _, provided_pass = decoded.partition(":")
+                if secrets.compare_digest(provided_user, username) and secrets.compare_digest(
+                    provided_pass, password
+                ):
+                    return await call_next(request)
+            except Exception:
+                pass
+
+        return StarletteResponse(
+            content="Unauthorized",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="UniFi Monitor"'},
+        )
 
 
 @asynccontextmanager
@@ -87,6 +128,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(title="UniFi Monitor", version="0.2.0", lifespan=lifespan)
+app.add_middleware(BasicAuthMiddleware)
 
 # Import and include routes (uses dependency injection via app.state)
 from .api.routes import router  # noqa: E402

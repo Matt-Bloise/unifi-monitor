@@ -66,5 +66,9 @@ class Config:
     alert_webhook_url: str = os.getenv("ALERT_WEBHOOK_URL", "")
     alert_cooldown: int = _safe_int("ALERT_COOLDOWN", 300, min_val=30)
 
+    # Authentication (empty = disabled)
+    auth_username: str = os.getenv("AUTH_USERNAME", "")
+    auth_password: str = os.getenv("AUTH_PASSWORD", "")
+
 
 config = Config()

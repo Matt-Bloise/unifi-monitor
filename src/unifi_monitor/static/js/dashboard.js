@@ -20,10 +20,25 @@ var wsConn = null;
 var wsBackoff = 1000;
 var wsFailCount = 0;
 var wsMode = 'connecting'; // 'live', 'polling', 'connecting', 'disconnected'
+var _wsToken = '';
+
+async function fetchWsToken() {
+    try {
+        var resp = await fetch('/api/auth/token');
+        if (resp.ok) {
+            var data = await resp.json();
+            _wsToken = data.token || '';
+        }
+    } catch (e) {
+        // Auth may not be enabled -- proceed without token
+        _wsToken = '';
+    }
+}
 
 function wsConnect() {
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     var url = proto + '//' + location.host + '/api/ws';
+    if (_wsToken) url += '?token=' + encodeURIComponent(_wsToken);
     wsConn = new WebSocket(url);
 
     wsConn.onopen = function() {
@@ -599,9 +614,12 @@ document.addEventListener('visibilitychange', function() {
             wsConn = null;
         }
     } else {
-        if (wsMode === 'polling' || !wsConn) {
-            wsConnect();
-        }
+        // Re-fetch token (may have rotated) then reconnect
+        fetchWsToken().then(function() {
+            if (wsMode === 'polling' || !wsConn) {
+                wsConnect();
+            }
+        });
         // Also do an immediate REST fetch for charts (WS doesn't carry chart data)
         refresh();
     }
@@ -615,6 +633,8 @@ document.getElementById('refresh-btn').addEventListener('click', function() {
 // Periodic stale check (even when paused, update the banner)
 setInterval(updateStatusBanner, 10000);
 
-// Initial load: start WS + initial REST fetch for chart data
-wsConnect();
-refresh();
+// Initial load: fetch WS token, then start WS + REST fetch for chart data
+fetchWsToken().then(function() {
+    wsConnect();
+    refresh();
+});
