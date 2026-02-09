@@ -1,20 +1,20 @@
 # Roadmap
 
-## v0.2.0 (Current)
+## v0.3.0 (Current)
 - [x] WebSocket live updates (replace polling)
 - [x] Per-client detail view with signal/satisfaction charts
 - [x] Configurable alert thresholds
 - [x] Webhook notifications (Discord, Slack, ntfy, etc.)
-
-## v0.3.0
-- [ ] User authentication (basic auth or API key)
-- [ ] DNS query logging (via NetFlow)
-- [ ] Multi-site support
-- [ ] Data export (CSV/JSON)
-- [ ] Historical comparison (today vs last week)
-- [ ] Dark mode
+- [x] User authentication (HTTP Basic Auth)
+- [x] Data export (CSV/JSON)
+- [x] Dark/light theme toggle
 
 ## v0.4.0
+- [ ] DNS query logging (via NetFlow)
+- [ ] Multi-site support
+- [ ] Historical comparison (today vs last week)
+
+## v0.5.0
 - [ ] Grafana-compatible /metrics endpoint (Prometheus)
 - [ ] Custom dashboard layouts
 - [ ] Mobile-responsive PWA

@@ -4,6 +4,7 @@
 
 | Version | Supported |
 |---------|-----------|
+| 0.3.x   | Yes       |
 | 0.2.x   | Yes       |
 | < 0.2   | No        |
 
@@ -19,7 +20,7 @@ You should receive an acknowledgment within 48 hours. A fix will be prioritized 
 
 ## Security Considerations
 
-- **No built-in authentication.** The dashboard exposes network data (client MACs, IPs, device names). Bind to `localhost` or place behind a reverse proxy with authentication.
+- **Optional HTTP Basic Auth.** Set `AUTH_USERNAME` and `AUTH_PASSWORD` environment variables to enable authentication. Without auth, the dashboard exposes network data (client MACs, IPs, device names). If auth is not enabled, bind to `localhost` or place behind a reverse proxy with authentication.
 - **UniFi credentials** are stored in `.env` (gitignored). Never commit credentials to version control.
 - **Self-signed SSL** is expected when connecting to UniFi gateways (`verify=False`). This is standard for local UniFi OS API access.
 - **Webhook URLs** may contain secrets (e.g., Discord webhook tokens). Treat `ALERT_WEBHOOK_URL` as sensitive.

@@ -18,7 +18,7 @@ docker compose up -d
 
 Dashboard at **http://localhost:8080**.
 
-> **Security note:** The dashboard has no built-in authentication. Bind to `localhost` or place behind a reverse proxy with auth if exposed beyond your local network.
+> **Security note:** Set `AUTH_USERNAME` and `AUTH_PASSWORD` to enable HTTP Basic Auth. Without auth, bind to `localhost` or place behind a reverse proxy if exposed beyond your local network.
 
 ## Features
 
@@ -31,6 +31,8 @@ Dashboard at **http://localhost:8080**.
 - **WAN tracking** -- latency history, status changes, gateway CPU/memory
 - **Device status** -- gateway + AP cards with online/offline badges
 - **Connection resilience** -- auto-reconnect with exponential backoff, REST polling fallback
+- **Data export** -- download client or WAN data as CSV or JSON from the dashboard
+- **Dark/light theme** -- toggle between dark and light mode (persisted in browser)
 - **Auto-pause** -- stops updates when browser tab is hidden
 - **Docker healthcheck** -- `/api/health` endpoint for monitoring
 - **Zero dependencies** -- no Grafana, no InfluxDB, no external database. SQLite + one container.
@@ -104,6 +106,8 @@ All settings via environment variables (`.env` or `docker-compose.yml`):
 | `UNIFI_PORT` | `443` | Gateway HTTPS port |
 | `WEB_HOST` | `0.0.0.0` | Dashboard bind address |
 | `WEB_PORT` | `8080` | Dashboard port |
+| `AUTH_USERNAME` | *(empty)* | HTTP Basic Auth username (both required to enable) |
+| `AUTH_PASSWORD` | *(empty)* | HTTP Basic Auth password |
 | `NETFLOW_ENABLED` | `true` | Enable NetFlow/IPFIX collector |
 | `NETFLOW_HOST` | `0.0.0.0` | NetFlow listener bind address |
 | `NETFLOW_PORT` | `2055` | NetFlow listener port |
@@ -128,6 +132,9 @@ All settings via environment variables (`.env` or `docker-compose.yml`):
 | `GET /api/traffic/top-ports?hours=1&limit=20` | Top ports by bytes |
 | `GET /api/traffic/bandwidth?hours=24&bucket_minutes=5` | Bandwidth timeseries |
 | `GET /api/alarms` | Active (non-archived) alarms |
+| `GET /api/export/clients?hours=24&format=json&limit=10000` | Export client data (JSON or CSV) |
+| `GET /api/export/wan?hours=24&format=json&limit=10000` | Export WAN metrics (JSON or CSV) |
+| `GET /api/auth/token` | Get WebSocket auth token (requires Basic Auth) |
 | `WS /api/ws` | WebSocket for live dashboard updates |
 
 ## NetFlow Setup

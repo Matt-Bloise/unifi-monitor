@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-02-09
+
+### Added
+- HTTP Basic Auth middleware (`AUTH_USERNAME` / `AUTH_PASSWORD` env vars)
+- WebSocket token auth (hour-based SHA-256 token, auto-fetched by dashboard)
+- `/api/health` bypasses auth for Docker healthchecks
+- Data export: `GET /api/export/clients` and `GET /api/export/wan` (JSON or CSV)
+- Export buttons on Connected Clients and WAN Latency panels
+- Dark/light theme toggle with localStorage persistence
+- Chart.js colors sync with active theme
+
+### Changed
+- Dashboard init sequence: fetches WS auth token before connecting
+- Chart colors use CSS custom properties instead of hardcoded hex values
+
 ## [0.2.0] - 2026-02-09
 
 ### Added
@@ -40,5 +55,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Multi-stage Docker build with non-root user
 - CI: ruff lint + format check + pytest
 
+[0.3.0]: https://github.com/Matt-Bloise/unifi-monitor/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Matt-Bloise/unifi-monitor/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Matt-Bloise/unifi-monitor/releases/tag/v0.1.0
