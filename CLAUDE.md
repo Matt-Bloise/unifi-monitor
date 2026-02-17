@@ -44,8 +44,6 @@ All source in `src/unifi_monitor/` -- installable via `pip install -e .`.
 
 ## Known Limitations
 
-- No authentication on the dashboard (bind to localhost or use a reverse proxy)
-- Single-site only (no multi-site UniFi support)
 - NetFlow parser requires the `netflow` package (`pip install -e ".[netflow]"`)
 - SQLite not suitable for multi-process writes (single-process design)
 - WebSocket broadcast is in-memory (won't scale across multiple worker processes)
