@@ -22,12 +22,12 @@ classifiers = [
     "Topic :: System :: Networking :: Monitoring",
 ]
 dependencies = [
-    "fastapi>=0.104",
-    "uvicorn[standard]>=0.24",
-    "requests>=2.31",
-    "urllib3>=2.0",
-    "python-dotenv>=1.0",
-    "httpx>=0.25",
+    "fastapi>=0.104,<1",
+    "uvicorn[standard]>=0.24,<1",
+    "requests>=2.31,<3",
+    "urllib3>=2.0,<3",
+    "python-dotenv>=1.0,<2",
+    "httpx>=0.25,<1",
 ]
 
 [project.urls]
@@ -39,15 +39,15 @@ Documentation = "https://matt-bloise.github.io/unifi-monitor/"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.24",
-    "ruff>=0.8",
+    "pytest>=8.0,<9",
+    "pytest-asyncio>=0.24,<1",
+    "ruff>=0.8,<1",
 ]
 netflow = [
-    "netflow>=0.12",
+    "netflow>=0.12,<1",
 ]
 docs = [
-    "mkdocs-material>=9.0",
+    "mkdocs-material>=9.0,<10",
 ]
 
 [project.scripts]
