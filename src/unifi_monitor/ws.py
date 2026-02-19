@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import WebSocket
+from starlette.websockets import WebSocketDisconnect
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class ConnectionManager:
         for ws in self._connections:
             try:
                 await ws.send_json(data)
-            except Exception:
+            except (WebSocketDisconnect, RuntimeError, ConnectionError):
                 dead.append(ws)
         for ws in dead:
             self._connections.discard(ws)

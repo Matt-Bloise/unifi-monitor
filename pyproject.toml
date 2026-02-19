@@ -41,6 +41,7 @@ Documentation = "https://matt-bloise.github.io/unifi-monitor/"
 dev = [
     "pytest>=8.0,<9",
     "pytest-asyncio>=0.24,<1",
+    "pytest-cov>=6.0,<7",
     "ruff>=0.8,<1",
 ]
 netflow = [
@@ -61,6 +62,20 @@ unifi_monitor = ["static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--cov=unifi_monitor --cov-report=term-missing --no-cov-on-fail"
+
+[tool.coverage.run]
+source = ["unifi_monitor"]
+omit = ["*/static/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+]
 
 [tool.ruff]
 target-version = "py310"
