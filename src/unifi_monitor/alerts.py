@@ -133,5 +133,5 @@ class AlertEngine:
                     log.warning("Alert webhook returned %d: %s", resp.status_code, resp.text[:200])
                 else:
                     log.info("Alert webhook sent (%d alerts)", len(alerts))
-        except Exception as e:
+        except httpx.HTTPError as e:
             log.warning("Alert webhook failed: %s", e)

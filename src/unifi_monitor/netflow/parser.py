@@ -22,7 +22,7 @@ def int_to_ipv4(val: int) -> str:
         return "0.0.0.0"
     try:
         return socket.inet_ntoa(struct.pack("!I", val & 0xFFFFFFFF))
-    except Exception:
+    except (struct.error, OSError):
         return str(val)
 
 
@@ -31,7 +31,7 @@ def int_to_ipv6(val: int) -> str:
         return "::"
     try:
         return socket.inet_ntop(socket.AF_INET6, val.to_bytes(16, "big"))
-    except Exception:
+    except (struct.error, OSError, OverflowError):
         return str(val)
 
 
@@ -89,7 +89,7 @@ def _parse_netflow(data: bytes, templates: dict) -> list[dict]:
     try:
         export = netflow.parse_packet(data, templates)
         return [extract_flow_fields(f) for f in export.flows]
-    except Exception as e:
+    except (struct.error, ValueError, KeyError) as e:
         log.debug("NetFlow parse error: %s", e)
         return []
 
@@ -126,7 +126,7 @@ def _parse_ipfix(data: bytes, templates: dict) -> list[dict]:
                     flows.append(extract_flow_fields(flow))
         except (IPFIXTemplateNotRecognized, IPFIXTemplateError):
             pass
-        except Exception as e:
+        except (struct.error, ValueError, KeyError) as e:
             log.debug("IPFIX set error: %s", e)
 
     return flows

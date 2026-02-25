@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import logging
 import secrets
+import sqlite3
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -58,7 +60,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
                     provided_pass, password
                 ):
                     return await call_next(request)
-            except Exception:
+            except (ValueError, UnicodeDecodeError, binascii.Error):
                 pass
 
         return StarletteResponse(
@@ -110,7 +112,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             nf_transport = await start_collector(
                 db, config.netflow_host, config.netflow_port, site=config.unifi_sites[0]
             )
-        except Exception as e:
+        except OSError as e:
             log.error("NetFlow collector failed to start: %s", e)
 
     # Periodic DB cleanup
@@ -119,7 +121,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await asyncio.sleep(3600)  # Every hour
             try:
                 db.cleanup(config.retention_hours)
-            except Exception as e:
+            except sqlite3.OperationalError as e:
                 log.warning("DB cleanup error: %s", e)
 
     cleanup_task = asyncio.create_task(cleanup_loop())

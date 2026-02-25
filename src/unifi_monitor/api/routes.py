@@ -7,6 +7,7 @@ import csv
 import hashlib
 import io
 import secrets
+import sqlite3
 import time
 from typing import Any
 
@@ -104,7 +105,7 @@ def health_check(request: Request) -> dict:
             stats = db.get_db_stats()
             result["last_write_ts"] = stats.get("last_write_ts", 0)
             result["db_size_bytes"] = stats.get("db_size_bytes", 0)
-        except Exception:
+        except sqlite3.OperationalError:
             result["status"] = "degraded"
     else:
         result["status"] = "starting"
@@ -134,7 +135,7 @@ def overview(db: Database = Depends(get_db), site: str = Depends(get_site)) -> d
         devices = db.get_latest_devices(site=site)
         clients = db.get_latest_clients(site=site)
         alarms = db.get_active_alarms(site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
     wireless_clients = [c for c in clients if not c.get("is_wired")]
@@ -176,7 +177,7 @@ def get_clients(
     """All connected clients with stats, paginated."""
     try:
         clients = db.get_latest_clients(site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     clients.sort(key=lambda c: c.get("rx_bytes") or 0, reverse=True)
     return {
@@ -197,7 +198,7 @@ def client_history(
     """Signal/satisfaction history for a specific client."""
     try:
         return db.get_client_history(mac, hours, site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
@@ -206,7 +207,7 @@ def get_devices(db: Database = Depends(get_db), site: str = Depends(get_site)) -
     """All adopted devices with stats."""
     try:
         return db.get_latest_devices(site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
@@ -219,7 +220,7 @@ def wan_history(
     """WAN latency and status history."""
     try:
         return db.get_wan_history(hours, site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
@@ -233,7 +234,7 @@ def top_talkers(
     """Top source IPs by bytes (NetFlow data)."""
     try:
         rows = db.get_top_talkers(hours, limit, site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
         r["total_bytes_fmt"] = _fmt_bytes(r.get("total_bytes"))
@@ -250,7 +251,7 @@ def top_destinations(
     """Top destination IPs by bytes (NetFlow data)."""
     try:
         rows = db.get_top_destinations(hours, limit, site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
         r["total_bytes_fmt"] = _fmt_bytes(r.get("total_bytes"))
@@ -267,7 +268,7 @@ def top_ports(
     """Top destination ports by bytes."""
     try:
         rows = db.get_top_ports(hours, limit, site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
         r["total_bytes_fmt"] = _fmt_bytes(r.get("total_bytes"))
@@ -285,7 +286,7 @@ def dns_queries(
     """DNS query aggregates: per-client-per-server."""
     try:
         rows = db.get_dns_queries(hours, limit, site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
         r["total_bytes_fmt"] = _fmt_bytes(r.get("total_bytes"))
@@ -302,7 +303,7 @@ def dns_top_clients(
     """Top DNS-querying clients by flow count."""
     try:
         rows = db.get_dns_top_clients(hours, limit, site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
         r["total_bytes_fmt"] = _fmt_bytes(r.get("total_bytes"))
@@ -319,7 +320,7 @@ def dns_top_servers(
     """Top DNS servers by flow count."""
     try:
         rows = db.get_dns_top_servers(hours, limit, site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
         r["total_bytes_fmt"] = _fmt_bytes(r.get("total_bytes"))
@@ -336,7 +337,7 @@ def bandwidth_timeseries(
     """Bandwidth over time in configurable buckets."""
     try:
         rows = db.get_bandwidth_timeseries(hours, bucket_minutes, site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     for r in rows:
         r["mbps"] = round((r.get("total_bytes", 0) * 8) / (bucket_minutes * 60 * 1_000_000), 2)
@@ -360,7 +361,7 @@ def get_alarms(db: Database = Depends(get_db), site: str = Depends(get_site)) ->
     """Active (non-archived) alarms."""
     try:
         return db.get_active_alarms(site=site)
-    except Exception as e:
+    except sqlite3.OperationalError as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 

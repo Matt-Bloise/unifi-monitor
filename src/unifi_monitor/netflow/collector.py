@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sqlite3
 import threading
 import time
 
@@ -56,7 +57,7 @@ class NetFlowProtocol(asyncio.DatagramProtocol):
         self._last_flush = ts
         try:
             self.db.insert_netflow_batch(ts, batch_copy, site=self.site)
-        except Exception as e:
+        except sqlite3.OperationalError as e:
             log.warning("NetFlow DB write error: %s", e)
 
     def connection_lost(self, exc: Exception | None) -> None:

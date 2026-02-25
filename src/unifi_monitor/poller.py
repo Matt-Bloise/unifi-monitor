@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sqlite3
 import time
 from collections.abc import Callable
 from typing import Any
@@ -139,7 +140,7 @@ class Poller:
         while self._running:
             try:
                 await asyncio.to_thread(self._poll_cycle)
-            except Exception as e:
+            except (UnifiAPIError, UnifiAuthError, ConnectionError, TimeoutError, sqlite3.OperationalError, KeyError, TypeError, ValueError) as e:
                 log.warning("Poll cycle error: %s", e)
 
             # Broadcast snapshot to WebSocket clients + evaluate alerts
@@ -151,7 +152,7 @@ class Poller:
                     fired = self._alert_engine.evaluate(snapshot)
                     if fired:
                         await self._alert_engine.notify(fired)
-            except Exception as e:
+            except (ConnectionError, RuntimeError, TypeError, ValueError) as e:
                 log.debug("Post-cycle broadcast/alert error: %s", e)
 
             await asyncio.sleep(config.poll_interval)
@@ -180,7 +181,7 @@ class Poller:
                 log.warning("%s poll failed: %s", name.capitalize(), e)
 
                 self._error_count += 1
-            except Exception as e:
+            except (sqlite3.OperationalError, KeyError, TypeError, ValueError) as e:
                 log.warning("%s poll failed (unexpected): %s", name.capitalize(), e)
 
                 self._error_count += 1
@@ -236,7 +237,7 @@ class Poller:
             devices = self.db.get_latest_devices(site=self.site)
             clients = self.db.get_latest_clients(site=self.site)
             alarms = self.db.get_active_alarms(site=self.site)
-        except Exception as e:
+        except sqlite3.OperationalError as e:
             log.debug("Snapshot build failed: %s", e)
             return None
 
